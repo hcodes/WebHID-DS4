@@ -5,7 +5,10 @@
   "main": "dist/webhid-ds4.js",
   "module": "dist/webhid-ds4.esm.js",
   "types": "dist/index.d.ts",
-  "repository": "https://github.com/TheBITLINK/WebHID-DS4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheBITLINK/WebHID-DS4.git"
+  },
   "author": "TheBITLINK aka BIT <me@thebitlink.com>",
   "license": "MIT",
   "private": false,
