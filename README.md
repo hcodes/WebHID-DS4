@@ -15,7 +15,6 @@ Provides high level APIs to access most of the controller's features over USB an
  
 ### Known Issues
 
- - Setting the lightbar colors and rumble intensity over Bluetooth is currently broken.
  - There's currently no way to detect if a controller has been disconnected.
  - There's currently no way to detect if a controller has already been connected either.
  - Not all DS4 Models are supported by this library. I only have a CUH-ZCT2U, so that's what i used to test. Support for third party controllers is not guaranteed.
