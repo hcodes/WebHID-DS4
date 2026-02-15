@@ -225,7 +225,7 @@ export class DualShock4 {
 
       return this.device.sendReport(report[0], report.slice(1))
     } else {
-      const report = new Uint16Array(79)
+      const report = new Uint8Array(79)
       const crcBytes = new Uint8Array(4)
       const crcDv = new DataView(crcBytes.buffer)
 
