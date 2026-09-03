@@ -1,9 +1,8 @@
 import { defaultState, DualShock4Interface } from './state'
 import DualShock4Lightbar from './lightbar'
 import DualShock4Rumble from './rumble'
+import { crc32 } from './util/crc32'
 import { normalizeThumbstick, normalizeTrigger } from './util/normalize'
-import { Buffer } from 'buffer'
-import { crc32 } from 'crc'
 
 /**
  * Main class.
@@ -84,7 +83,7 @@ export class DualShock4 {
    */
   private processControllerReport (report : HIDInputReportEvent) {
     const { data } = report
-    this.lastReport = data.buffer
+    this.lastReport = data.buffer as ArrayBuffer
 
     // Interface is unknown
     if (this.state.interface === DualShock4Interface.Disconnected) {
@@ -251,7 +250,7 @@ export class DualShock4 {
       // Lightbar Blue
       report[11] = this.lightbar.b
 
-      crcDv.setUint32(0, crc32(Buffer.from(report.slice(0, 75))))
+      crcDv.setUint32(0, crc32(report.slice(0, 75)))
       report[75] = crcBytes[3]
       report[76] = crcBytes[2]
       report[77] = crcBytes[1]

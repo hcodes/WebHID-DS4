@@ -12,31 +12,35 @@
   "author": "TheBITLINK aka BIT <me@thebitlink.com>",
   "license": "MIT",
   "private": false,
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "rollup -c",
-    "build-docs": "parcel build demo/index.html -d docs --public-url ./ && typedoc"
+    "build": "rolldown -c && tsc --emitDeclarationOnly",
+    "build-docs": "parcel build --target demo --no-autoinstall && typedoc",
+    "prepack": "node --run build",
+    "test": "node --run build && tsx --test test/*.test.ts"
   },
   "devDependencies": {
-    "@types/crc": "^3.4.0",
-    "@types/events": "^3.0.0",
-    "@types/w3c-web-hid": "^1.0.0",
-    "@vue/component-compiler-utils": "^3.0.0",
-    "parcel-bundler": "^1.12.5",
-    "rollup": "^1.26.2",
-    "rollup-plugin-commonjs": "^10.1.0",
-    "rollup-plugin-node-resolve": "^5.2.0",
-    "rollup-plugin-typescript2": "^0.24.3",
-    "tslib": "^1.10.0",
-    "typedoc": "^0.20.36",
-    "typescript": "^3.6.3",
-    "vue": "^2.6.10",
-    "vue-hot-reload-api": "^2.3.4",
-    "vue-template-compiler": "^2.6.10"
-  },
-  "dependencies": {
-    "crc": "^3.8.0"
+    "@parcel/transformer-vue": "^2.16.4",
+    "@types/w3c-web-hid": "^1.0.7",
+    "@vue/compiler-sfc": "^3.5.42",
+    "parcel": "^2.16.4",
+    "rolldown": "^1.2.7",
+    "tsx": "^4.23.13",
+    "typedoc": "^0.28.20",
+    "typescript": "^6.0.3",
+    "vue": "^3.5.42"
   },
   "browserslist": [
     "last 1 Chrome version"
-  ]
+  ],
+  "targets": {
+    "demo": {
+      "source": "demo/index.html",
+      "context": "browser",
+      "distDir": "dist-pages",
+      "publicUrl": "./"
+    }
+  }
 }

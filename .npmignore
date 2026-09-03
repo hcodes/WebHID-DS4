@@ -1,7 +1,10 @@
 .cache
+.parcel-cache
+.github
 demo
-docs
+dist-pages
 src
 .vscode
-rollup.config.js
+rolldown.config.mjs
 tsconfig.json
+test
