@@ -33,6 +33,7 @@ control, and rumble over USB and Bluetooth.
 - Raw signed gyroscope and accelerometer data
 - Up to two simultaneous touchpad contacts
 - Battery capacity and charging status
+- Firmware build, raw hardware/firmware versions, known board model, and clone check
 - RGB and HSL lightbar control
 - Light and heavy rumble motors
 - Bundled TypeScript declarations
@@ -103,6 +104,39 @@ if (!navigator.hid || typeof navigator.hid.requestDevice !== 'function') {
   })
 }
 ```
+
+After a successful connection, `firmwareInfo` contains metadata read from the
+controller's feature report `0xA3`:
+
+```js
+if (await controller.connect()) {
+  console.log(controller.firmwareInfo)
+  // {
+  //   buildDate: 'Aug  3 2013',
+  //   buildTime: '07:01:12',
+  //   hardwareVersion: 0xA000,
+  //   hardwareVersionHex: '0xA000',
+  //   boardModel: 'JDM-050',
+  //   firmwareVersion: 0x0100,
+  //   firmwareVersionHex: '0x0100'
+  // }
+  console.log(controller.isClone) // false for a controller that supports report 0x81
+}
+```
+
+The same report is supported over USB and Bluetooth. Firmware and clone-check
+feature reports time out after one second, so compatible controllers that do
+not implement them cannot block `connect()`. Call
+`await controller.readFirmwareInfo()` to refresh it. The method returns the
+updated object, or `null` when a third-party controller does not implement the
+report or returns malformed data. Reading firmware information therefore does
+not prevent an otherwise compatible controller from connecting.
+
+Hardware and firmware versions are raw 16-bit values supplied by the
+controller. The hexadecimal properties preserve the four-digit notation used
+by low-level controller tools and drivers. They are deliberately not converted
+to semantic versions: Sony does not publish a DualShock 4 controller-firmware
+release catalog that establishes such a mapping.
 
 The `state` object is updated when the library receives a supported controller
 input report. Its main properties are:
@@ -178,6 +212,10 @@ welcome.
   [`navigator.hid.getDevices()`](https://developer.mozilla.org/docs/Web/API/HID/getDevices).
 - Controller behavior may vary by operating system, firmware, connection type,
   and hardware revision.
+- `firmwareInfo` can identify the raw version and known board model reported by
+  a controller, but it cannot determine whether that version is a latest Sony
+  release. `isClone` is based on feature-report compatibility and is not
+  cryptographic proof that a controller is genuine.
 
 ## Changes since 1.0.5
 

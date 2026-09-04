@@ -618,10 +618,10 @@ test('ignores Bluetooth input reports with an invalid payload length', async (t)
 })
 
 test('ignores a Bluetooth input report with an invalid CRC', async (t) => {
-  let featureReportRequests = 0
+  const featureReportRequests: number[] = []
   const device = createDevice({
-    async receiveFeatureReport () {
-      featureReportRequests++
+    async receiveFeatureReport (reportId) {
+      featureReportRequests.push(reportId)
       return new DataView(new ArrayBuffer(0))
     }
   })
@@ -642,7 +642,7 @@ test('ignores a Bluetooth input report with an invalid CRC', async (t) => {
 
   assert.equal(controller.state.interface, DualShock4Interface.Disconnected)
   assert.equal(controller.state.timestamp, initialTimestamp)
-  assert.equal(featureReportRequests, 0)
+  assert.deepEqual(featureReportRequests, [0xA3])
 
   controller.state.interface = DualShock4Interface.Bluetooth
   controller.state.axes.leftStickX = 0.25
@@ -995,11 +995,10 @@ test('does not retain the selected device when opening fails', async (t) => {
 })
 
 test('requests the Bluetooth feature report only once', async (t) => {
-  let featureReportRequests = 0
+  const featureReportRequests: number[] = []
   const device = createDevice({
     async receiveFeatureReport (reportId) {
-      assert.equal(reportId, 0x02)
-      featureReportRequests++
+      featureReportRequests.push(reportId)
       return new DataView(new ArrayBuffer(0))
     }
   })
@@ -1018,7 +1017,7 @@ test('requests the Bluetooth feature report only once', async (t) => {
   device.oninputreport?.call(device, report)
   device.oninputreport?.call(device, report)
 
-  assert.equal(featureReportRequests, 1)
+  assert.deepEqual(featureReportRequests, [0xA3, 0x02])
 })
 
 test('maps DualShock 4 battery data to capacity and status', async (t) => {

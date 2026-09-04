@@ -66,6 +66,7 @@
     "entryPointStrategy": "expand",
     "out": "./dist-pages/api",
     "excludeExternals": true,
+    "excludeInternal": true,
     "externalPattern": "**/node_modules/**/*",
     "exclude": [
       "**/util/**"

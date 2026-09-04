@@ -19,6 +19,8 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 - Added a browser-native CRC-32 implementation, removing the runtime dependency on `crc` and Node.js `Buffer` polyfills.
 - Added `batteryCapacity` and `batteryStatus` to controller state, along with the exported `BatteryStatus` type for distinguishing charging, discharging, full, error, and unknown states.
 - Added `DualShock4.disconnect()` for stopping rumble, closing the WebHID session, and resetting controller state without revoking device permission.
+- Added `firmwareInfo` and `readFirmwareInfo()` for reading DualShock 4 feature report `0xA3` over USB or Bluetooth and exposing its build strings, raw 16-bit hardware and firmware versions, and known board model.
+- Added a one-second timeout for controller information reports and the `isClone` feature-report compatibility check.
 - Added the fork maintainer's copyright notice while preserving the original MIT license attribution.
 
 ### Changed

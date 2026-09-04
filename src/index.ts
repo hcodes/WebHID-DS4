@@ -1,15 +1,42 @@
 import { createDefaultState, DualShock4Interface } from './state'
 import DualShock4Lightbar from './lightbar'
 import DualShock4Rumble from './rumble'
+import {
+  firmwareFeatureReportId,
+  parseFirmwareInfo,
+  type DualShock4FirmwareInfo
+} from './firmware'
 import { crc32 } from './util/crc32'
 import { normalizeThumbstick, normalizeTrigger } from './util/normalize'
 
 export type { BatteryStatus } from './state'
+export type { DualShock4BoardModel, DualShock4FirmwareInfo } from './firmware'
 
 const bluetoothInputReportId = 0x11
 const bluetoothInputReportLength = 77
 const bluetoothInputCrcOffset = 73
 const bluetoothInputStateOffset = 2
+const featureReportTimeoutMs = 1000
+const originalControllerFeatureReportId = 0x81
+
+function receiveFeatureReportWithTimeout (device: HIDDevice, reportId: number): Promise<DataView> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new DOMException('Feature report request timed out.', 'TimeoutError'))
+    }, featureReportTimeoutMs)
+
+    void device.receiveFeatureReport(reportId).then(
+      report => {
+        clearTimeout(timeout)
+        resolve(report)
+      },
+      error => {
+        clearTimeout(timeout)
+        reject(error)
+      }
+    )
+  })
+}
 
 function isValidBluetoothInputReport (data: DataView): boolean {
   if (data.byteLength !== bluetoothInputReportLength) return false
@@ -39,6 +66,7 @@ export class DualShock4 {
   private initialization ?: Promise<boolean>
   private disconnection ?: Promise<void>
   private isDisconnecting = false
+  private firmwareInfoRequest = 0
 
   /** Internal WebHID device */
   device ?: HIDDevice
@@ -47,6 +75,15 @@ export class DualShock4 {
   lastReport ?: ArrayBuffer
   /** Raw contents of the last HID Report sent to the controller. */
   lastSentReport ?: ArrayBuffer
+
+  /** Firmware metadata reported by the connected controller, or `null` when unavailable. */
+  firmwareInfo: DualShock4FirmwareInfo | null = null
+
+  /**
+   * Result of the feature-report clone check, or `null` before it runs.
+   * This is a compatibility heuristic, not proof of authenticity.
+   */
+  isClone: boolean | null = null
 
   /** Current controller state */
   state = createDefaultState()
@@ -130,6 +167,58 @@ export class DualShock4 {
   }
 
   /**
+   * Reads DualShock 4 feature report 0xA3 and updates {@link firmwareInfo} and
+   * {@link isClone}.
+   *
+   * Both USB and Bluetooth controllers use this report. The request and the
+   * follow-up clone check time out after one second. Unsupported, timed out, or
+   * malformed reports return `null` so compatible third-party controllers can
+   * still be used.
+   */
+  async readFirmwareInfo (): Promise<DualShock4FirmwareInfo | null> {
+    const device = this.device
+    if (!device || !device.opened) {
+      throw new Error('Controller not connected. You must call .connect() first!')
+    }
+    if (this.isDisconnecting) {
+      throw new DOMException('Controller disconnecting.', 'InvalidStateError')
+    }
+
+    const request = ++this.firmwareInfoRequest
+
+    try {
+      const report = await receiveFeatureReportWithTimeout(device, firmwareFeatureReportId)
+      const firmwareInfo = parseFirmwareInfo(report)
+      let isClone = true
+
+      if (firmwareInfo) {
+        try {
+          await receiveFeatureReportWithTimeout(device, originalControllerFeatureReportId)
+          isClone = false
+        } catch {
+          isClone = true
+        }
+      }
+
+      if (
+        request === this.firmwareInfoRequest &&
+        this.device === device &&
+        device.opened
+      ) {
+        this.firmwareInfo = firmwareInfo
+        this.isClone = isClone
+      }
+      return firmwareInfo
+    } catch {
+      if (request === this.firmwareInfoRequest && this.device === device) {
+        this.firmwareInfo = null
+        this.isClone = true
+      }
+      return null
+    }
+  }
+
+  /**
    * Stops rumble and closes the current WebHID session without revoking device
    * permission. Pending output that is waiting for transport detection rejects
    * with an `AbortError`.
@@ -189,6 +278,8 @@ export class DualShock4 {
     this.device = undefined
     this.lastReport = undefined
     this.lastSentReport = undefined
+    this.firmwareInfo = null
+    this.isClone = null
     this.state = createDefaultState()
   }
 
@@ -232,7 +323,11 @@ export class DualShock4 {
     if (previousDevice) previousDevice.oninputreport = null
     this.resetInterfaceDetection()
     this.device = device
+    this.firmwareInfo = null
+    this.isClone = null
     device.oninputreport = (e : HIDInputReportEvent) => this.processControllerReport(e)
+
+    await this.readFirmwareInfo()
 
     return true
   }
