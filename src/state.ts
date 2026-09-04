@@ -152,57 +152,59 @@ export enum DualShock4Interface {
  * Default / Initial State
  * @ignore
  */
-export const defaultState : DualShock4State = {
-  interface: DualShock4Interface.Disconnected,
-  batteryCapacity: null,
-  batteryStatus: 'unknown',
+export function createDefaultState () : DualShock4State {
+  return {
+    interface: DualShock4Interface.Disconnected,
+    batteryCapacity: null,
+    batteryStatus: 'unknown',
 
-  axes: {
-    leftStickX: 0,
-    leftStickY: 0,
-    rightStickX: 0,
-    rightStickY: 0,
+    axes: {
+      leftStickX: 0,
+      leftStickY: 0,
+      rightStickX: 0,
+      rightStickY: 0,
 
-    l2: 0,
-    r2: 0,
+      l2: 0,
+      r2: 0,
 
-    accelX: 0,
-    accelY: 0,
-    accelZ: 0,
+      accelX: 0,
+      accelY: 0,
+      accelZ: 0,
 
-    gyroX: 0,
-    gyroY: 0,
-    gyroZ: 0
-  },
+      gyroX: 0,
+      gyroY: 0,
+      gyroZ: 0
+    },
 
-  buttons: {
-    triangle: false,
-    circle: false,
-    cross: false,
-    square: false,
+    buttons: {
+      triangle: false,
+      circle: false,
+      cross: false,
+      square: false,
 
-    dPadUp: false,
-    dPadRight: false,
-    dPadDown: false,
-    dPadLeft: false,
+      dPadUp: false,
+      dPadRight: false,
+      dPadDown: false,
+      dPadLeft: false,
 
-    l1: false,
-    l2: false,
-    l3: false,
+      l1: false,
+      l2: false,
+      l3: false,
 
-    r1: false,
-    r2: false,
-    r3: false,
+      r1: false,
+      r2: false,
+      r3: false,
 
-    options: false,
-    share: false,
-    playStation: false,
-    touchPadClick: false
-  },
+      options: false,
+      share: false,
+      playStation: false,
+      touchPadClick: false
+    },
 
-  touchpad: {
-    touches: []
-  },
+    touchpad: {
+      touches: []
+    },
 
-  timestamp: -1
+    timestamp: -1
+  }
 }

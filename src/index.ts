@@ -1,4 +1,4 @@
-import { defaultState, DualShock4Interface } from './state'
+import { createDefaultState, DualShock4Interface } from './state'
 import DualShock4Lightbar from './lightbar'
 import DualShock4Rumble from './rumble'
 import { crc32 } from './util/crc32'
@@ -19,7 +19,7 @@ export class DualShock4 {
   lastSentReport ?: ArrayBuffer
 
   /** Current controller state */
-  state = defaultState
+  state = createDefaultState()
 
   /** Allows lightbar control */
   lightbar = new DualShock4Lightbar(this)

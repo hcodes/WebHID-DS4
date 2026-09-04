@@ -67,6 +67,33 @@ test('returns false when device selection is cancelled', async (t) => {
   assert.equal(controller.device, undefined)
 })
 
+test('keeps controller state independent between instances', (t) => {
+  useHid(t, async () => [])
+
+  const firstController = new DualShock4()
+  const secondController = new DualShock4()
+
+  assert.notEqual(firstController.state, secondController.state)
+  assert.notEqual(firstController.state.axes, secondController.state.axes)
+  assert.notEqual(firstController.state.buttons, secondController.state.buttons)
+  assert.notEqual(firstController.state.touchpad, secondController.state.touchpad)
+  assert.notEqual(firstController.state.touchpad.touches, secondController.state.touchpad.touches)
+
+  firstController.state.interface = DualShock4Interface.Bluetooth
+  firstController.state.batteryCapacity = 95
+  firstController.state.batteryStatus = 'discharging'
+  firstController.state.axes.leftStickX = 1
+  firstController.state.buttons.cross = true
+  firstController.state.touchpad.touches.push({ touchId: 1, x: 100, y: 200 })
+
+  assert.equal(secondController.state.interface, DualShock4Interface.Disconnected)
+  assert.equal(secondController.state.batteryCapacity, null)
+  assert.equal(secondController.state.batteryStatus, 'unknown')
+  assert.equal(secondController.state.axes.leftStickX, 0)
+  assert.equal(secondController.state.buttons.cross, false)
+  assert.deepEqual(secondController.state.touchpad.touches, [])
+})
+
 test('propagates device selection errors', async (t) => {
   const requestError = new DOMException('Permission denied', 'SecurityError')
   useHid(t, async () => {
