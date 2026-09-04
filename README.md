@@ -11,11 +11,6 @@ Sony DualShock 4 controllers, built on the experimental
 controller input, motion and touchpad data, battery information, lightbar
 control, and rumble over USB and Bluetooth.
 
-> [!NOTE]
-> The `@hcodes/webhid-ps4` package has not been published to npm yet. The badges
-> and npm links will become active after its first release. This README
-> documents the current `master` branch, based on upstream `webhid-ds4` 1.0.5.
-
 ## Requirements
 
 - A desktop browser with WebHID support. The project targets the latest Chrome;
@@ -43,8 +38,6 @@ control, and rumble over USB and Bluetooth.
 ```sh
 npm install @hcodes/webhid-ps4
 ```
-
-The current source and the next major release are distributed as an ES module:
 
 ```js
 import { DualShock4 } from '@hcodes/webhid-ps4'
@@ -217,22 +210,6 @@ welcome.
   release. `isClone` is based on feature-report compatibility and is not
   cryptographic proof that a controller is genuine.
 
-## Changes since 1.0.5
-
-The current source includes these breaking changes compared with the published
-1.0.5 release:
-
-- The CommonJS build has been removed. Use the ESM import shown above.
-- `init()` has been replaced by `connect()`; use `disconnect()` to close the
-  WebHID session when finished.
-- `state.battery` has been replaced by `state.batteryCapacity`, which can be
-  `null` when the controller reports an error or unknown value.
-- `state.charging` has been replaced by `state.batteryStatus`. The exported
-  `BatteryStatus` type distinguishes charging, discharging, full, error, and
-  unknown states.
-
-See the [changelog](./CHANGELOG.md) for the complete list of changes.
-
 ## Development
 
 CI uses Node.js 26 and npm.
@@ -249,7 +226,7 @@ npm run build-docs
 
 ## Links
 
-- [Live demo](https://hcodes.github.io/WebHID-DS4/)
+- [Live demo](https://checkdevice.online/en/gamepad/dualshock-4)
 - [API reference](https://hcodes.github.io/WebHID-DS4/api/)
 - [npm package](https://www.npmjs.com/package/@hcodes/webhid-ps4)
 - [Changelog](./CHANGELOG.md)
