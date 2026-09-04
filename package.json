@@ -1,6 +1,6 @@
 {
   "name": "@hcodes/webhid-ps4",
-  "version": "1.0.5",
+  "version": "2.0.0",
   "description": "An API wrapper built over the experimental WebHID API to communicate with DualShock 4 controllers",
   "type": "module",
   "main": "dist/webhid-ds4.js",
