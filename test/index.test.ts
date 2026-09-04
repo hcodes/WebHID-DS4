@@ -58,6 +58,17 @@ function emitUsbReport (device: HIDDevice, batteryStatus: number) {
   } as HIDInputReportEvent)
 }
 
+function createBluetoothReportData (byteOffset = 0): DataView {
+  const buffer = new ArrayBuffer(byteOffset + 77 + 8)
+  const data = new Uint8Array(buffer, byteOffset, 77)
+
+  data[2] = 0xFF
+  // CRC-32 for [0xA1, 0x11, ...data.slice(0, 73)], stored little-endian.
+  data.set([0x12, 0x47, 0x1B, 0x51], 73)
+
+  return new DataView(buffer, byteOffset, data.byteLength)
+}
+
 function setTouchPoint (
   data: Uint8Array,
   frameIndex: number,
@@ -327,7 +338,7 @@ test('sends an early lightbar update as Bluetooth after a valid Bluetooth input 
   device.oninputreport?.call(device, {
     device,
     reportId: 0x11,
-    data: new DataView(new ArrayBuffer(77)),
+    data: createBluetoothReportData(),
     timeStamp: 1
   } as HIDInputReportEvent)
   await Promise.resolve()
@@ -341,6 +352,98 @@ test('sends an early lightbar update as Bluetooth after a valid Bluetooth input 
     [170, 255, 0]
   )
   await update
+})
+
+test('parses a Bluetooth input report from its DataView byte offset', async (t) => {
+  const device = createDevice()
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+  controller.state.interface = DualShock4Interface.Bluetooth
+
+  device.oninputreport?.call(device, {
+    device,
+    reportId: 0x11,
+    data: createBluetoothReportData(8),
+    timeStamp: 42
+  } as HIDInputReportEvent)
+
+  assert.equal(controller.state.axes.leftStickX, 1)
+  assert.equal(controller.state.timestamp, 42)
+})
+
+test('ignores Bluetooth input reports with an invalid payload length', async (t) => {
+  const device = createDevice()
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+  controller.state.interface = DualShock4Interface.Bluetooth
+  controller.state.axes.leftStickX = 0.25
+  controller.state.timestamp = 7
+  const validReport = createBluetoothReportData()
+  const validData = new Uint8Array(
+    validReport.buffer,
+    validReport.byteOffset,
+    validReport.byteLength
+  )
+
+  for (const byteLength of [76, 78]) {
+    const data = new Uint8Array(byteLength)
+    data.set(validData.subarray(0, Math.min(byteLength, validData.byteLength)))
+
+    device.oninputreport?.call(device, {
+      device,
+      reportId: 0x11,
+      data: new DataView(data.buffer),
+      timeStamp: byteLength
+    } as HIDInputReportEvent)
+
+    assert.equal(controller.state.axes.leftStickX, 0.25, `${byteLength}-byte payload`)
+    assert.equal(controller.state.timestamp, 7, `${byteLength}-byte payload`)
+  }
+})
+
+test('ignores a Bluetooth input report with an invalid CRC', async (t) => {
+  let featureReportRequests = 0
+  const device = createDevice({
+    async receiveFeatureReport () {
+      featureReportRequests++
+      return new DataView(new ArrayBuffer(0))
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+  const initialTimestamp = controller.state.timestamp
+  const data = createBluetoothReportData()
+  data.setUint8(73, data.getUint8(73) ^ 0xFF)
+
+  device.oninputreport?.call(device, {
+    device,
+    reportId: 0x11,
+    data,
+    timeStamp: 42
+  } as HIDInputReportEvent)
+
+  assert.equal(controller.state.interface, DualShock4Interface.Disconnected)
+  assert.equal(controller.state.timestamp, initialTimestamp)
+  assert.equal(featureReportRequests, 0)
+
+  controller.state.interface = DualShock4Interface.Bluetooth
+  controller.state.axes.leftStickX = 0.25
+
+  device.oninputreport?.call(device, {
+    device,
+    reportId: 0x11,
+    data,
+    timeStamp: 43
+  } as HIDInputReportEvent)
+
+  assert.equal(controller.state.axes.leftStickX, 0.25)
+  assert.equal(controller.state.timestamp, initialTimestamp)
 })
 
 test('coalesces early output updates into one report with the latest state', async (t) => {
@@ -453,7 +556,7 @@ test('waits for transport detection again when initialization selects another de
   secondDevice.oninputreport?.call(secondDevice, {
     device: secondDevice,
     reportId: 0x11,
-    data: new DataView(new ArrayBuffer(77)),
+    data: createBluetoothReportData(),
     timeStamp: 2
   } as HIDInputReportEvent)
   await update
@@ -496,7 +599,7 @@ test('ignores a queued input report from a replaced device', async (t) => {
   secondDevice.oninputreport?.call(secondDevice, {
     device: secondDevice,
     reportId: 0x11,
-    data: new DataView(new ArrayBuffer(77)),
+    data: createBluetoothReportData(),
     timeStamp: 2
   } as HIDInputReportEvent)
   await update
@@ -587,7 +690,7 @@ test('requests the Bluetooth feature report only once', async (t) => {
   const report = {
     device,
     reportId: 0x11,
-    data: new DataView(new ArrayBuffer(77)),
+    data: createBluetoothReportData(),
     timeStamp: 1
   } as HIDInputReportEvent
 

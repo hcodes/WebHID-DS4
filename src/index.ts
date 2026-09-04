@@ -6,6 +6,25 @@ import { normalizeThumbstick, normalizeTrigger } from './util/normalize'
 
 export type { BatteryStatus } from './state'
 
+const bluetoothInputReportId = 0x11
+const bluetoothInputReportLength = 77
+const bluetoothInputCrcOffset = 73
+const bluetoothInputStateOffset = 2
+
+function isValidBluetoothInputReport (data: DataView): boolean {
+  if (data.byteLength !== bluetoothInputReportLength) return false
+
+  const crcData = new Uint8Array(2 + bluetoothInputCrcOffset)
+  crcData[0] = 0xA1
+  crcData[1] = bluetoothInputReportId
+  crcData.set(
+    new Uint8Array(data.buffer, data.byteOffset, bluetoothInputCrcOffset),
+    2
+  )
+
+  return crc32(crcData) === data.getUint32(bluetoothInputCrcOffset, true)
+}
+
 /**
  * Main class.
  */
@@ -145,11 +164,13 @@ export class DualShock4 {
     const { data } = report
     this.lastReport = data.buffer as ArrayBuffer
 
+    if (report.reportId === bluetoothInputReportId && !isValidBluetoothInputReport(data)) return
+
     // Interface is unknown
     if (this.state.interface === DualShock4Interface.Disconnected) {
       if (report.reportId === 0x01 && data.byteLength === 63) {
         this.state.interface = DualShock4Interface.USB
-      } else if (report.reportId === 0x11 && data.byteLength === 77) {
+      } else if (report.reportId === bluetoothInputReportId) {
         this.state.interface = DualShock4Interface.Bluetooth
         this.markInterfaceReady()
         this.device!.receiveFeatureReport(0x02)
@@ -172,8 +193,12 @@ export class DualShock4 {
       this.updateState(data)
     }
     // Bluetooth Reports
-    if (this.state.interface === DualShock4Interface.Bluetooth && report.reportId === 0x11) {
-      this.updateState(new DataView(data.buffer, 2))
+    if (this.state.interface === DualShock4Interface.Bluetooth && report.reportId === bluetoothInputReportId) {
+      this.updateState(new DataView(
+        data.buffer,
+        data.byteOffset + bluetoothInputStateOffset,
+        bluetoothInputCrcOffset - bluetoothInputStateOffset
+      ))
     }
   }
 
