@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test, { type TestContext } from 'node:test'
 
 import { DualShock4 } from '../src'
+import { DualShock4Interface } from '../src/state'
 
 function useHid (t: TestContext, requestDevice: () => Promise<HIDDevice[]>) {
   const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
@@ -43,6 +44,18 @@ function createDevice (overrides: Partial<HIDDevice> = {}): HIDDevice {
       return new DataView(new ArrayBuffer(0))
     }
   }, overrides) as unknown as HIDDevice
+}
+
+function emitUsbReport (device: HIDDevice, batteryStatus: number) {
+  const data = new Uint8Array(63)
+  data[29] = batteryStatus
+
+  device.oninputreport?.call(device, {
+    device,
+    reportId: 0x01,
+    data: new DataView(data.buffer),
+    timeStamp: 1
+  } as HIDInputReportEvent)
 }
 
 test('returns false when device selection is cancelled', async (t) => {
@@ -134,4 +147,35 @@ test('requests the Bluetooth feature report only once', async (t) => {
   device.oninputreport?.call(device, report)
 
   assert.equal(featureReportRequests, 1)
+})
+
+test('maps DualShock 4 battery data to capacity and status', async (t) => {
+  const device = createDevice()
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+  controller.state.interface = DualShock4Interface.Disconnected
+
+  const cases = [
+    { raw: 0x00, capacity: 5, status: 'discharging' },
+    { raw: 0x04, capacity: 45, status: 'discharging' },
+    { raw: 0x09, capacity: 95, status: 'discharging' },
+    { raw: 0x0A, capacity: 100, status: 'discharging' },
+    { raw: 0x10, capacity: 5, status: 'charging' },
+    { raw: 0x19, capacity: 95, status: 'charging' },
+    { raw: 0x1A, capacity: 100, status: 'charging' },
+    { raw: 0x1B, capacity: 100, status: 'full' },
+    { raw: 0x1C, capacity: null, status: 'unknown' },
+    { raw: 0x1D, capacity: null, status: 'unknown' },
+    { raw: 0x1E, capacity: null, status: 'error' },
+    { raw: 0x1F, capacity: null, status: 'error' }
+  ]
+
+  for (const expected of cases) {
+    emitUsbReport(device, expected.raw)
+
+    assert.equal(controller.state.batteryCapacity, expected.capacity, `raw status 0x${expected.raw.toString(16)}`)
+    assert.equal(controller.state.batteryStatus, expected.status, `raw status 0x${expected.raw.toString(16)}`)
+  }
 })

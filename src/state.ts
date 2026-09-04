@@ -7,10 +7,10 @@ export interface DualShock4State {
   /** Interface used for communication (USB/Bluetooth) */
   interface : DualShock4Interface
 
-  /** Battery Level (0-100) */
-  battery : number
-  /** Is the battery being charged? */
-  charging : boolean
+  /** Battery capacity (0-100), or `null` when it cannot be determined. */
+  batteryCapacity : number | null
+  /** Current battery state. */
+  batteryStatus : BatteryStatus
 
   /** Analog positions */
   axes : DualShock4AnalogState
@@ -22,6 +22,9 @@ export interface DualShock4State {
   /** Timestamp of the last report */
   timestamp : number
 }
+
+/** Current battery state. */
+export type BatteryStatus = 'discharging' | 'charging' | 'full' | 'error' | 'unknown'
 
 /**
  * Button State
@@ -151,8 +154,8 @@ export enum DualShock4Interface {
  */
 export const defaultState : DualShock4State = {
   interface: DualShock4Interface.Disconnected,
-  battery: 0,
-  charging: false,
+  batteryCapacity: null,
+  batteryStatus: 'unknown',
 
   axes: {
     leftStickX: 0,

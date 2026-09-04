@@ -3,8 +3,8 @@
     <div v-for="(controller, i) in controllers" :key="i">
       <h2>
         Controller #{{i}} ({{controller.state.interface.toUpperCase()}},
-        Battery: {{controller.state.battery}}%
-        <span v-if="controller.state.charging">[charging]</span>)
+        Battery: {{controller.state.batteryCapacity === null ? 'unknown' : `${controller.state.batteryCapacity}%`}}
+        [{{controller.state.batteryStatus}}])
       </h2>
       <div class="params">
         <h4>Lightbar Color</h4>

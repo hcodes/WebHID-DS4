@@ -4,6 +4,8 @@ import DualShock4Rumble from './rumble'
 import { crc32 } from './util/crc32'
 import { normalizeThumbstick, normalizeTrigger } from './util/normalize'
 
+export type { BatteryStatus } from './state'
+
 /**
  * Main class.
  */
@@ -161,11 +163,21 @@ export class DualShock4 {
     this.state.axes.r2 = normalizeTrigger(data.getUint8(8))
 
     // Update battery level
-    this.state.charging = !!(data.getUint8(29) & 0x10)
-    if (this.state.charging) {
-      this.state.battery = Math.min(Math.floor((data.getUint8(29) & 0x0F) * 100 / 11))
+    const batteryData = data.getUint8(29)
+    const batteryCapacity = batteryData & 0x0F
+    const cableConnected = !!(batteryData & 0x10)
+    if (!cableConnected) {
+      this.state.batteryCapacity = batteryCapacity < 10 ? batteryCapacity * 10 + 5 : 100
+      this.state.batteryStatus = 'discharging'
+    } else if (batteryCapacity <= 10) {
+      this.state.batteryCapacity = batteryCapacity < 10 ? batteryCapacity * 10 + 5 : 100
+      this.state.batteryStatus = 'charging'
+    } else if (batteryCapacity === 11) {
+      this.state.batteryCapacity = 100
+      this.state.batteryStatus = 'full'
     } else {
-      this.state.battery = Math.min(100, Math.floor((data.getUint8(29) & 0x0F) * 100 / 8))
+      this.state.batteryCapacity = null
+      this.state.batteryStatus = batteryCapacity >= 14 ? 'error' : 'unknown'
     }
     
     // Update motion input
