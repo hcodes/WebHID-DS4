@@ -530,6 +530,115 @@ test('rejects every coalesced update when the deferred device send fails', async
   await Promise.all([colorFailure, rumbleFailure])
 })
 
+test('sends output reports sequentially with state captured at request time', async (t) => {
+  let finishFirstSend!: () => void
+  const firstSendFinished = new Promise<void>((resolve) => {
+    finishFirstSend = resolve
+  })
+  const sentReports: Uint8Array[] = []
+  const device = createDevice({
+    async sendReport (_reportId, data) {
+      sentReports.push(new Uint8Array(data))
+      if (sentReports.length === 1) await firstSendFinished
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+  controller.state.interface = DualShock4Interface.USB
+
+  const colorUpdate = controller.lightbar.setColorRGB(10, 20, 30)
+
+  assert.equal(sentReports.length, 1)
+
+  const rumbleUpdate = controller.rumble.setRumbleIntensity(64, 192)
+
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.equal(sentReports.length, 1)
+  assert.deepEqual(
+    Array.from(sentReports[0].slice(3, 8)),
+    [0, 0, 10, 20, 30]
+  )
+
+  finishFirstSend()
+  await Promise.all([colorUpdate, rumbleUpdate])
+
+  assert.equal(sentReports.length, 2)
+  assert.deepEqual(
+    Array.from(sentReports[1].slice(3, 8)),
+    [64, 192, 10, 20, 30]
+  )
+})
+
+test('continues sending queued output after an earlier send fails', async (t) => {
+  const sendError = new Error('First output failed')
+  let failFirstSend!: () => void
+  const firstSendFailed = new Promise<void>((_resolve, reject) => {
+    failFirstSend = () => reject(sendError)
+  })
+  const sentReports: Uint8Array[] = []
+  const device = createDevice({
+    async sendReport (_reportId, data) {
+      sentReports.push(new Uint8Array(data))
+      if (sentReports.length === 1) await firstSendFailed
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+  controller.state.interface = DualShock4Interface.USB
+
+  const colorUpdate = controller.lightbar.setColorRGB(10, 20, 30)
+  const colorFailure = assert.rejects(colorUpdate, error => error === sendError)
+  const rumbleUpdate = controller.rumble.setRumbleIntensity(64, 192)
+
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.equal(sentReports.length, 1)
+
+  failFirstSend()
+  await Promise.all([colorFailure, rumbleUpdate])
+
+  assert.equal(sentReports.length, 2)
+  assert.deepEqual(
+    Array.from(sentReports[1].slice(3, 8)),
+    [64, 192, 10, 20, 30]
+  )
+})
+
+test('reports asynchronous output failures from property setters', async (t) => {
+  const lightbarError = new Error('Lightbar output failed')
+  const rumbleError = new Error('Rumble output failed')
+  const errors = [lightbarError, rumbleError]
+  const device = createDevice({
+    async sendReport () {
+      throw errors.shift()
+    }
+  })
+  useHid(t, async () => [device])
+
+  const loggedErrors: unknown[] = []
+  const originalConsoleError = console.error
+  console.error = (error) => loggedErrors.push(error)
+  t.after(() => {
+    console.error = originalConsoleError
+  })
+
+  const controller = new DualShock4()
+  await controller.init()
+  controller.state.interface = DualShock4Interface.USB
+
+  controller.lightbar.r = 10
+  controller.rumble.light = 20
+
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(loggedErrors, [lightbarError, rumbleError])
+})
+
 test('waits for transport detection again when initialization selects another device', async (t) => {
   const firstDevice = createDevice()
   const secondReportIds: number[] = []

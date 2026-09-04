@@ -34,7 +34,7 @@ export default class DualShock4Lightbar {
 
   set r (value : number) {
     this._r = Math.min(255, Math.max(0, value))
-    this.updateLightbar()
+    void this.updateLightbar().catch(error => console.error(error))
   }
 
   /** Green Color Intensity (0-255) */
@@ -44,7 +44,7 @@ export default class DualShock4Lightbar {
 
   set g (value : number) {
     this._g = Math.min(255, Math.max(0, value))
-    this.updateLightbar()
+    void this.updateLightbar().catch(error => console.error(error))
   }
 
   /** Blue Color Intensity (0-255) */
@@ -54,7 +54,7 @@ export default class DualShock4Lightbar {
 
   set b (value : number) {
     this._b = Math.min(255, Math.max(0, value))
-    this.updateLightbar()
+    void this.updateLightbar().catch(error => console.error(error))
   }
 
   /**

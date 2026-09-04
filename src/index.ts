@@ -34,6 +34,7 @@ export class DualShock4 {
   private interfaceReadyResolved = false
   private hasPendingOutput = false
   private pendingOutput ?: Promise<void>
+  private outputQueue ?: Promise<void>
   private initialization ?: Promise<boolean>
 
   /** Internal WebHID device */
@@ -82,6 +83,20 @@ export class DualShock4 {
 
     this.interfaceReadyResolved = true
     this.resolveInterfaceReady?.()
+  }
+
+  private enqueueOutputReport (device: HIDDevice, reportId: number, data: Uint8Array<ArrayBuffer>): Promise<void> {
+    const output = this.outputQueue
+      ? this.outputQueue.then(() => device.sendReport(reportId, data))
+      : device.sendReport(reportId, data)
+    const queueTail = output.catch(() => {})
+
+    this.outputQueue = queueTail
+    void queueTail.then(() => {
+      if (this.outputQueue === queueTail) this.outputQueue = undefined
+    })
+
+    return output
   }
 
   /**
@@ -340,7 +355,7 @@ export class DualShock4 {
 
       this.lastSentReport = report.buffer
 
-      return this.device.sendReport(report[0], report.slice(1))
+      return this.enqueueOutputReport(this.device, report[0], report.slice(1))
     } else {
       const report = new Uint8Array(79)
       const crcBytes = new Uint8Array(4)
@@ -376,7 +391,7 @@ export class DualShock4 {
       
       this.lastSentReport = report.buffer
 
-      return this.device.sendReport(report[1], report.slice(2))
+      return this.enqueueOutputReport(this.device, report[1], report.slice(2))
     }
   }
 }

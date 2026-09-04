@@ -31,7 +31,7 @@ export default class DualShock4Rumble {
 
   set light (value : number) {
     this._light = Math.max(0, Math.min(255, value))
-    this.updateRumble()
+    void this.updateRumble().catch(error => console.error(error))
   }
 
   /** Heavy Rumble Intensity (0-255) */
@@ -41,7 +41,7 @@ export default class DualShock4Rumble {
 
   set heavy (value : number) {
     this._heavy = Math.max(0, Math.min(255, value))
-    this.updateRumble()
+    void this.updateRumble().catch(error => console.error(error))
   }
 
   /**
