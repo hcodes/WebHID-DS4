@@ -19,7 +19,8 @@
     "build": "rolldown -c && tsc --emitDeclarationOnly",
     "build-docs": "parcel build --target demo --no-autoinstall && typedoc",
     "prepack": "node --run build",
-    "test": "node --run build && tsx --test test/*.test.ts"
+    "test": "node --run build && tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@parcel/transformer-vue": "^2.16.4",
