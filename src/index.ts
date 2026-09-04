@@ -46,10 +46,11 @@ export class DualShock4 {
     const devices = await navigator.hid.requestDevice({
       // TODO: Add more compatible controllers?
       filters: [
-        // Official Sony Controllers
+        // Official Sony controllers and adapter
         { vendorId: 0x054C, productId: 0x0BA0 },
         { vendorId: 0x054C, productId: 0x05C4 },
         { vendorId: 0x054C, productId: 0x09CC },
+        // Third-party accessory using Sony's vendor ID
         { vendorId: 0x054C, productId: 0x05C5 },
         // Razer Raiju
         { vendorId: 0x1532, productId: 0x1000 },
@@ -210,8 +211,6 @@ export class DualShock4 {
    * Sends the local rumble and lightbar state to the controller.
    * 
    * This function is called automatically in most cases.
-   * 
-   * **Currently broken over Bluetooth, doesn't do anything**
    */
   async sendLocalState () {
     if (!this.device) throw new Error('Controller not initialized. You must call .init() first!')

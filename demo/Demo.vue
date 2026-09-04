@@ -42,9 +42,9 @@
     <br><br>
     <button v-if="hidSupported" @click="addController">Connect Controller</button>
     <div v-else>
-      Your browser doesn't seem to support WebHID yet.<br>
-      If you are using Chrome, make sure to have at least version 78, and enable the
-      <a href="chrome://flags/#enable-experimental-web-platform-features">experimental web platform features</a> flag.
+      WebHID is not available in this browser or page context.<br>
+      Use a supported desktop Chromium browser over HTTPS or localhost, and
+      <a href="https://developer.mozilla.org/docs/Web/API/WebHID_API#browser_compatibility">check current browser compatibility</a>.
     </div>
   </div>
 </template>

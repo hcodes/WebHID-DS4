@@ -14,11 +14,15 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 - Added automated tests for controller initialization, CRC-32 calculation, and input normalization.
 - Added GitHub Actions workflows for running tests and deploying the demo and API documentation to GitHub Pages.
+- Added npm version, monthly downloads, unpacked size, and upstream fork badges to the README.
 - Added a browser-native CRC-32 implementation, removing the runtime dependency on `crc` and Node.js `Buffer` polyfills.
 - Added `batteryCapacity` and `batteryStatus` to controller state, along with the exported `BatteryStatus` type for distinguishing charging, discharging, full, error, and unknown states.
+- Added the fork maintainer's copyright notice while preserving the original MIT license attribution.
 
 ### Changed
 
+- Renamed the package to `@hcodes/webhid-ps4`, updated repository and demo links, and configured the scoped package for public npm publishing.
+- Reworked the README to document current WebHID requirements, the v2 API, supported controller model identifiers, package usage, and fork attribution.
 - Updated the test and GitHub Pages workflows to use Node.js 26.
 - Modernized the development toolchain from Yarn, Rollup, Parcel 1, Vue 2, and TypeScript 3 to npm, Rolldown, Parcel 2, Vue 3, and TypeScript 6.
 - Updated the demo to use the Vue 3 application API and native ES modules.
