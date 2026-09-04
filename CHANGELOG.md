@@ -2,6 +2,12 @@
 
 All notable changes made in this fork after the upstream `1.0.5` release are documented in this file.
 
+## [2.0.1]
+
+### Fixed
+
+- Initialized Bluetooth from the minimal `0x01` input report used before full `0x11` reports are enabled, restoring cold-start compatibility with third-party controllers.
+
 ## [2.0.0]
 
 ### Breaking Changes

@@ -617,6 +617,33 @@ test('ignores Bluetooth input reports with an invalid payload length', async (t)
   }
 })
 
+test('bootstraps Bluetooth from a minimal Bluetooth report without clone detection', async (t) => {
+  const featureReportRequests: number[] = []
+  const device = createDevice({
+    async receiveFeatureReport (reportId) {
+      featureReportRequests.push(reportId)
+      return new DataView(new ArrayBuffer(0))
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.connect()
+  controller.isClone = false
+
+  for (const timeStamp of [1, 2]) {
+    device.oninputreport?.call(device, {
+      device,
+      reportId: 0x01,
+      data: new DataView(new Uint8Array([0x80, 0x80, 0x80, 0x80, 0x08, 0, 0, 0, 0]).buffer),
+      timeStamp
+    } as HIDInputReportEvent)
+  }
+
+  assert.equal(controller.state.interface, DualShock4Interface.Bluetooth)
+  assert.deepEqual(featureReportRequests, [0xA3, 0x02])
+})
+
 test('ignores a Bluetooth input report with an invalid CRC', async (t) => {
   const featureReportRequests: number[] = []
   const device = createDevice({

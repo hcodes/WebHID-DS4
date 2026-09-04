@@ -345,6 +345,16 @@ export class DualShock4 {
     const { data } = report
     this.lastReport = data.buffer as ArrayBuffer
 
+    // Bluetooth may use a minimal report until feature report 0x02 is requested.
+    if (report.reportId === 0x01 && data.byteLength === 9) {
+      if (this.state.interface === DualShock4Interface.Disconnected) {
+        this.state.interface = DualShock4Interface.Bluetooth
+        this.markInterfaceReady()
+        void this.device.receiveFeatureReport(0x02)
+      }
+      return
+    }
+
     if (report.reportId === bluetoothInputReportId && !isValidBluetoothInputReport(data)) return
 
     // Interface is unknown
@@ -354,7 +364,7 @@ export class DualShock4 {
       } else if (report.reportId === bluetoothInputReportId) {
         this.state.interface = DualShock4Interface.Bluetooth
         this.markInterfaceReady()
-        this.device!.receiveFeatureReport(0x02)
+        void this.device.receiveFeatureReport(0x02)
         return
       } else {
         return
