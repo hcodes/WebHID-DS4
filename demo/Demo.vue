@@ -49,6 +49,7 @@
   </div>
 </template>
 <script>
+import { reactive } from 'vue'
 import { DualShock4 } from '../src'
 
 export default {
@@ -59,7 +60,7 @@ export default {
   },
   methods: {
     async addController () {
-      const controller = new DualShock4()
+      const controller = reactive(new DualShock4())
       if (await controller.connect()) {
         this.controllers.push(controller)
       }
