@@ -30,12 +30,15 @@ function isValidBluetoothInputReport (data: DataView): boolean {
  */
 export class DualShock4 {
   private resolveInterfaceReady ?: () => void
+  private rejectInterfaceReady ?: (reason?: unknown) => void
   private interfaceReady !: Promise<void>
   private interfaceReadyResolved = false
   private hasPendingOutput = false
   private pendingOutput ?: Promise<void>
   private outputQueue ?: Promise<void>
   private initialization ?: Promise<boolean>
+  private disconnection ?: Promise<void>
+  private isDisconnecting = false
 
   /** Internal WebHID device */
   device ?: HIDDevice
@@ -63,15 +66,19 @@ export class DualShock4 {
 
   private createInterfaceReady () {
     this.interfaceReadyResolved = false
-    this.interfaceReady = new Promise<void>((resolve) => {
+    this.interfaceReady = new Promise<void>((resolve, reject) => {
       this.resolveInterfaceReady = resolve
+      this.rejectInterfaceReady = reject
     })
   }
 
-  private resetInterfaceDetection () {
+  private resetInterfaceDetection (reason?: unknown) {
     this.state.interface = DualShock4Interface.Disconnected
 
-    if (this.interfaceReadyResolved) {
+    if (reason || this.interfaceReadyResolved) {
+      if (reason && this.pendingOutput) {
+        this.rejectInterfaceReady?.(reason)
+      }
       this.pendingOutput = undefined
       this.hasPendingOutput = false
       this.createInterfaceReady()
@@ -100,14 +107,15 @@ export class DualShock4 {
   }
 
   /**
-   * Initializes the WebHID API and requests access to the device.
+   * Requests access to a controller and opens its WebHID session.
    * 
    * This function must be called in the context of user interaction
    * (i.e in a click event handler), otherwise it might not work.
    *
-   * @returns `true` when the controller is initialized, or `false` when device selection is cancelled.
+   * @returns `true` when the controller is connected, or `false` when device selection is cancelled.
    */
-  async init (): Promise<boolean> {
+  async connect (): Promise<boolean> {
+    if (this.disconnection) await this.disconnection
     if (this.device && this.device.opened) return true
 
     const initialization = this.initialization ??= this.initializeDevice()
@@ -119,6 +127,69 @@ export class DualShock4 {
         this.initialization = undefined
       }
     }
+  }
+
+  /**
+   * Stops rumble and closes the current WebHID session without revoking device
+   * permission. Pending output that is waiting for transport detection rejects
+   * with an `AbortError`.
+   *
+   * If the browser fails to close a device that remains open, the active session
+   * is restored and the error is rethrown so disconnection can be retried.
+   */
+  async disconnect (): Promise<void> {
+    const disconnection = this.disconnection ??= this.disconnectDevice()
+
+    try {
+      await disconnection
+    } finally {
+      if (this.disconnection === disconnection) {
+        this.disconnection = undefined
+      }
+    }
+  }
+
+  private async disconnectDevice (): Promise<void> {
+    if (this.initialization) {
+      await this.initialization.catch(() => {})
+    }
+
+    const device = this.device
+    if (!device) return
+
+    const previousInterface = this.state.interface
+    void this.rumble.setRumbleIntensity(0, 0).catch(() => {})
+    this.isDisconnecting = true
+
+    try {
+      device.oninputreport = null
+      this.resetInterfaceDetection(new DOMException('Controller disconnected.', 'AbortError'))
+      if (this.outputQueue) await this.outputQueue
+      if (device.opened) await device.close()
+
+      this.clearDevice(device)
+    } catch (error) {
+      if (this.device === device) {
+        if (device.opened) {
+          this.state.interface = previousInterface
+          device.oninputreport = (e : HIDInputReportEvent) => this.processControllerReport(e)
+        } else {
+          this.clearDevice(device)
+        }
+      }
+      throw error
+    } finally {
+      this.isDisconnecting = false
+    }
+  }
+
+  private clearDevice (device: HIDDevice) {
+    if (this.device !== device) return
+
+    this.device = undefined
+    this.lastReport = undefined
+    this.lastSentReport = undefined
+    this.state = createDefaultState()
   }
 
   private async initializeDevice (): Promise<boolean> {
@@ -322,7 +393,8 @@ export class DualShock4 {
    * the first supported input report is combined and sent once the interface is known.
    */
   async sendLocalState (): Promise<void> {
-    if (!this.device) throw new Error('Controller not initialized. You must call .init() first!')
+    if (!this.device) throw new Error('Controller not connected. You must call .connect() first!')
+    if (this.isDisconnecting) throw new DOMException('Controller disconnecting.', 'InvalidStateError')
 
     if (this.state.interface === DualShock4Interface.Disconnected) {
       this.hasPendingOutput = true

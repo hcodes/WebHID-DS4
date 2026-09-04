@@ -36,7 +36,9 @@ function createDevice (overrides: Partial<HIDDevice> = {}): HIDDevice {
     async open () {
       this.opened = true
     },
-    async close () {},
+    async close () {
+      this.opened = false
+    },
     async forget () {},
     async sendReport () {},
     async sendFeatureReport () {},
@@ -86,12 +88,12 @@ function setTouchPoint (
   data[offset + 3] = y >> 4
 }
 
-test('returns false when device selection is cancelled', async (t) => {
+test('connect returns false when device selection is cancelled', async (t) => {
   useHid(t, async () => [])
 
   const controller = new DualShock4()
 
-  assert.equal(await controller.init(), false)
+  assert.equal(await controller.connect(), false)
   assert.equal(controller.device, undefined)
 })
 
@@ -131,24 +133,234 @@ test('propagates device selection errors', async (t) => {
   const controller = new DualShock4()
 
   await assert.rejects(
-    () => controller.init(),
+    () => controller.connect(),
     error => error === requestError
   )
   assert.equal(controller.device, undefined)
 })
 
-test('returns true when device initialization succeeds', async (t) => {
+test('returns true when the device connection succeeds', async (t) => {
   const device = createDevice()
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
 
-  assert.equal(await controller.init(), true)
+  assert.equal(await controller.connect(), true)
   assert.equal(controller.device, device)
   assert.equal(device.opened, true)
 })
 
-test('shares one device initialization between concurrent init calls', async (t) => {
+test('disconnect closes the HID session and clears controller state', async (t) => {
+  let closeCount = 0
+  let forgetCount = 0
+  const device = createDevice({
+    async close () {
+      closeCount++
+      Object.assign(this, { opened: false })
+    },
+    async forget () {
+      forgetCount++
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.connect()
+  emitUsbReport(device, 0x05)
+
+  assert.equal(controller.state.interface, DualShock4Interface.USB)
+  assert.notEqual(controller.lastReport, undefined)
+
+  await controller.disconnect()
+
+  assert.equal(closeCount, 1)
+  assert.equal(forgetCount, 0)
+  assert.equal(device.oninputreport, null)
+  assert.equal(controller.device, undefined)
+  assert.equal(controller.lastReport, undefined)
+  assert.equal(controller.lastSentReport, undefined)
+  assert.equal(controller.state.interface, DualShock4Interface.Disconnected)
+  assert.equal(controller.state.batteryCapacity, null)
+  assert.equal(controller.state.batteryStatus, 'unknown')
+})
+
+test('shares one disconnection between concurrent disconnect calls', async (t) => {
+  let finishClose!: () => void
+  const closeFinished = new Promise<void>((resolve) => {
+    finishClose = resolve
+  })
+  let closeCount = 0
+  const device = createDevice({
+    async close () {
+      closeCount++
+      await closeFinished
+      Object.assign(this, { opened: false })
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.connect()
+
+  const firstDisconnect = controller.disconnect()
+  const secondDisconnect = controller.disconnect()
+
+  await Promise.resolve()
+  assert.equal(closeCount, 1)
+
+  finishClose()
+  await Promise.all([firstDisconnect, secondDisconnect])
+  assert.equal(controller.device, undefined)
+})
+
+test('connect waits for disconnection before selecting another device', async (t) => {
+  let finishClose!: () => void
+  const closeFinished = new Promise<void>((resolve) => {
+    finishClose = resolve
+  })
+  const firstDevice = createDevice({
+    async close () {
+      await closeFinished
+      Object.assign(this, { opened: false })
+    }
+  })
+  const secondDevice = createDevice()
+  let requestCount = 0
+  useHid(t, async () => [requestCount++ === 0 ? firstDevice : secondDevice])
+
+  const controller = new DualShock4()
+  await controller.connect()
+
+  const disconnection = controller.disconnect()
+  const reconnection = controller.connect()
+
+  await Promise.resolve()
+  assert.equal(requestCount, 1)
+
+  finishClose()
+  await disconnection
+
+  assert.equal(await reconnection, true)
+  assert.equal(requestCount, 2)
+  assert.equal(controller.device, secondDevice)
+})
+
+test('disconnect waits for an in-flight connection and then closes it', async (t) => {
+  let finishOpen!: () => void
+  const openFinished = new Promise<void>((resolve) => {
+    finishOpen = resolve
+  })
+  let closeCount = 0
+  const device = createDevice({
+    async open () {
+      await openFinished
+      Object.assign(this, { opened: true })
+    },
+    async close () {
+      closeCount++
+      Object.assign(this, { opened: false })
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  const connection = controller.connect()
+  const disconnection = controller.disconnect()
+
+  finishOpen()
+
+  assert.equal(await connection, true)
+  await disconnection
+  assert.equal(closeCount, 1)
+  assert.equal(controller.device, undefined)
+})
+
+test('disconnect aborts output waiting for transport detection', async (t) => {
+  const device = createDevice()
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.connect()
+
+  const update = controller.rumble.setRumbleIntensity(64, 192)
+  await controller.disconnect()
+
+  const result = await Promise.race([
+    update.then(
+      () => 'resolved',
+      error => error instanceof DOMException ? error.name : 'unexpected-error'
+    ),
+    new Promise<string>((resolve) => setImmediate(() => resolve('pending')))
+  ])
+
+  assert.equal(result, 'AbortError')
+})
+
+test('disconnect stops rumble before closing an identified device', async (t) => {
+  const events: string[] = []
+  const device = createDevice({
+    async close () {
+      events.push('close')
+      Object.assign(this, { opened: false })
+    },
+    async sendReport (_reportId, data) {
+      const report = new Uint8Array(data)
+      events.push(`rumble:${report[3]},${report[4]}`)
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.connect()
+  emitUsbReport(device, 0x10)
+  await controller.rumble.setRumbleIntensity(64, 192)
+  events.length = 0
+
+  await controller.disconnect()
+
+  assert.deepEqual(events, ['rumble:0,0', 'close'])
+  assert.equal(controller.rumble.light, 0)
+  assert.equal(controller.rumble.heavy, 0)
+})
+
+test('restores an open controller when closing the HID session fails', async (t) => {
+  const closeError = new Error('Failed to close device')
+  let closeCount = 0
+  const device = createDevice({
+    async close () {
+      closeCount++
+      if (closeCount === 1) throw closeError
+      Object.assign(this, { opened: false })
+    }
+  })
+  let requestCount = 0
+  useHid(t, async () => {
+    requestCount++
+    return [device]
+  })
+
+  const controller = new DualShock4()
+  await controller.connect()
+  emitUsbReport(device, 0x10)
+
+  await assert.rejects(
+    () => controller.disconnect(),
+    error => error === closeError
+  )
+
+  assert.equal(controller.device, device)
+  assert.equal(device.opened, true)
+  assert.notEqual(device.oninputreport, null)
+  assert.equal(controller.state.interface, DualShock4Interface.USB)
+  assert.equal(await controller.connect(), true)
+  assert.equal(requestCount, 1)
+
+  await controller.disconnect()
+  assert.equal(closeCount, 2)
+  assert.equal(controller.device, undefined)
+})
+
+test('shares one device connection between concurrent connect calls', async (t) => {
   let finishOpen!: () => void
   const openFinished = new Promise<void>((resolve) => {
     finishOpen = resolve
@@ -168,8 +380,8 @@ test('shares one device initialization between concurrent init calls', async (t)
   })
 
   const controller = new DualShock4()
-  const firstInit = controller.init()
-  const secondInit = controller.init()
+  const firstConnection = controller.connect()
+  const secondConnection = controller.connect()
 
   await Promise.resolve()
 
@@ -177,7 +389,7 @@ test('shares one device initialization between concurrent init calls', async (t)
   assert.equal(openCount, 1)
 
   finishOpen()
-  assert.deepEqual(await Promise.all([firstInit, secondInit]), [true, true])
+  assert.deepEqual(await Promise.all([firstConnection, secondConnection]), [true, true])
 })
 
 test('defers an early lightbar update until a USB input report identifies the interface', async (t) => {
@@ -190,7 +402,7 @@ test('defers an early lightbar update until a USB input report identifies the in
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   const update = controller.lightbar.setColorRGB(170, 255, 0)
 
@@ -219,7 +431,7 @@ test('sends the protocol-required 32-byte USB output report', async (t) => {
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   controller.state.interface = DualShock4Interface.USB
 
   await controller.sendLocalState()
@@ -239,7 +451,7 @@ test('sets only rumble and lightbar valid flags in USB output reports', async (t
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   controller.state.interface = DualShock4Interface.USB
 
   await controller.sendLocalState()
@@ -258,7 +470,7 @@ test('sets only rumble and lightbar valid flags in Bluetooth output reports', as
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   controller.state.interface = DualShock4Interface.Bluetooth
 
   await controller.sendLocalState()
@@ -277,7 +489,7 @@ test('sends the default player-one blue when USB becomes ready without early out
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   emitUsbReport(device, 0x10)
   await Promise.resolve()
@@ -300,7 +512,7 @@ test('keeps early output pending when an unsupported input report arrives', asyn
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   const update = controller.rumble.setRumbleIntensity(64, 192)
 
@@ -331,7 +543,7 @@ test('sends an early lightbar update as Bluetooth after a valid Bluetooth input 
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   const update = controller.lightbar.setColorRGB(170, 255, 0)
 
@@ -359,7 +571,7 @@ test('parses a Bluetooth input report from its DataView byte offset', async (t) 
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   controller.state.interface = DualShock4Interface.Bluetooth
 
   device.oninputreport?.call(device, {
@@ -378,7 +590,7 @@ test('ignores Bluetooth input reports with an invalid payload length', async (t)
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   controller.state.interface = DualShock4Interface.Bluetooth
   controller.state.axes.leftStickX = 0.25
   controller.state.timestamp = 7
@@ -416,7 +628,7 @@ test('ignores a Bluetooth input report with an invalid CRC', async (t) => {
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   const initialTimestamp = controller.state.timestamp
   const data = createBluetoothReportData()
   data.setUint8(73, data.getUint8(73) ^ 0xFF)
@@ -456,7 +668,7 @@ test('coalesces early output updates into one report with the latest state', asy
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   const obsoleteColorUpdate = controller.lightbar.setColorRGB(255, 0, 0)
   const colorUpdate = controller.lightbar.setColorRGB(10, 20, 30)
@@ -489,7 +701,7 @@ test('keeps an early output promise pending until the device send completes', as
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   let updateSettled = false
   const update = controller.lightbar.setColorRGB(10, 20, 30).then(() => {
@@ -518,7 +730,7 @@ test('rejects every coalesced update when the deferred device send fails', async
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   const colorUpdate = controller.lightbar.setColorRGB(10, 20, 30)
   const rumbleUpdate = controller.rumble.setRumbleIntensity(64, 192)
@@ -545,7 +757,7 @@ test('sends output reports sequentially with state captured at request time', as
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   controller.state.interface = DualShock4Interface.USB
 
   const colorUpdate = controller.lightbar.setColorRGB(10, 20, 30)
@@ -588,7 +800,7 @@ test('continues sending queued output after an earlier send fails', async (t) =>
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   controller.state.interface = DualShock4Interface.USB
 
   const colorUpdate = controller.lightbar.setColorRGB(10, 20, 30)
@@ -628,7 +840,7 @@ test('reports asynchronous output failures from property setters', async (t) => 
   })
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   controller.state.interface = DualShock4Interface.USB
 
   controller.lightbar.r = 10
@@ -639,7 +851,7 @@ test('reports asynchronous output failures from property setters', async (t) => 
   assert.deepEqual(loggedErrors, [lightbarError, rumbleError])
 })
 
-test('waits for transport detection again when initialization selects another device', async (t) => {
+test('waits for transport detection again when connect selects another device', async (t) => {
   const firstDevice = createDevice()
   const secondReportIds: number[] = []
   const secondDevice = createDevice({
@@ -651,11 +863,11 @@ test('waits for transport detection again when initialization selects another de
   useHid(t, async () => [requestCount++ === 0 ? firstDevice : secondDevice])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   emitUsbReport(firstDevice, 0x10)
 
   Object.assign(firstDevice, { opened: false })
-  await controller.init()
+  await controller.connect()
 
   const update = controller.rumble.setRumbleIntensity(64, 192)
 
@@ -686,12 +898,12 @@ test('ignores a queued input report from a replaced device', async (t) => {
   useHid(t, async () => [requestCount++ === 0 ? firstDevice : secondDevice])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   const staleReportHandler = firstDevice.oninputreport
   assert.ok(staleReportHandler)
 
   Object.assign(firstDevice, { opened: false })
-  await controller.init()
+  await controller.connect()
   const update = controller.rumble.setRumbleIntensity(64, 192)
 
   staleReportHandler.call(firstDevice, {
@@ -734,11 +946,11 @@ test('carries pending output into the replacement device readiness cycle', async
   useHid(t, async () => [requestCount++ === 0 ? firstDevice : secondDevice])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   const update = controller.lightbar.setColorRGB(10, 20, 30)
 
   Object.assign(firstDevice, { opened: false })
-  await controller.init()
+  await controller.connect()
 
   emitUsbReport(secondDevice, 0x10)
   await Promise.resolve()
@@ -753,7 +965,7 @@ test('carries pending output into the replacement device readiness cycle', async
   await update
 })
 
-test('returns true when the controller is already initialized', async (t) => {
+test('returns true when the controller is already connected', async (t) => {
   useHid(t, async () => {
     throw new Error('Device selection should not be requested')
   })
@@ -761,7 +973,7 @@ test('returns true when the controller is already initialized', async (t) => {
   const controller = new DualShock4()
   controller.device = createDevice({ opened: true })
 
-  assert.equal(await controller.init(), true)
+  assert.equal(await controller.connect(), true)
 })
 
 test('does not retain the selected device when opening fails', async (t) => {
@@ -776,7 +988,7 @@ test('does not retain the selected device when opening fails', async (t) => {
   const controller = new DualShock4()
 
   await assert.rejects(
-    () => controller.init(),
+    () => controller.connect(),
     error => error === openError
   )
   assert.equal(controller.device, undefined)
@@ -794,7 +1006,7 @@ test('requests the Bluetooth feature report only once', async (t) => {
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   const report = {
     device,
@@ -814,7 +1026,7 @@ test('maps DualShock 4 battery data to capacity and status', async (t) => {
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
   controller.state.interface = DualShock4Interface.Disconnected
 
   const cases = [
@@ -845,7 +1057,7 @@ test('reads motion sensors as signed little-endian values from the DualShock 4 r
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   const data = new Uint8Array(63)
   const view = new DataView(data.buffer)
@@ -888,7 +1100,7 @@ test('uses the newest touchpad frame reported by the DualShock 4', async (t) => 
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   const data = new Uint8Array(63)
   data[32] = 3
@@ -916,7 +1128,7 @@ test('clears touchpad touches when the DualShock 4 reports no touch frames', asy
   useHid(t, async () => [device])
 
   const controller = new DualShock4()
-  await controller.init()
+  await controller.connect()
 
   controller.state.touchpad.touches.push({ touchId: 7, x: 100, y: 200 })
 

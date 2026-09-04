@@ -7,16 +7,18 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 ### Breaking Changes
 
 - Removed the CommonJS build; the package is now distributed as ESM only.
+- Removed `DualShock4.init()`. Use `DualShock4.connect()` instead.
 - Removed `DualShock4State.battery`. Use `batteryCapacity` instead; unlike the old field, it can be `null` when the controller reports an error or an unknown value.
 - Removed `DualShock4State.charging`. Use `batteryStatus === 'charging'` instead, or handle all `BatteryStatus` values when charging, full, error, and unknown states need to be distinguished.
 
 ### Added
 
-- Added automated tests for controller initialization, CRC-32 calculation, and input normalization.
+- Added automated tests for controller connection, CRC-32 calculation, and input normalization.
 - Added GitHub Actions workflows for running tests and deploying the demo and API documentation to GitHub Pages.
 - Added npm version, monthly downloads, unpacked size, and upstream fork badges to the README.
 - Added a browser-native CRC-32 implementation, removing the runtime dependency on `crc` and Node.js `Buffer` polyfills.
 - Added `batteryCapacity` and `batteryStatus` to controller state, along with the exported `BatteryStatus` type for distinguishing charging, discharging, full, error, and unknown states.
+- Added `DualShock4.disconnect()` for stopping rumble, closing the WebHID session, and resetting controller state without revoking device permission.
 - Added the fork maintainer's copyright notice while preserving the original MIT license attribution.
 
 ### Changed
@@ -39,7 +41,7 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 - Corrected DualShock 4 touchpad parsing to honor `num_touch_reports`, process every reported frame, and expose the active contacts from the newest frame.
 - Ensured each `DualShock4` instance has independent state, preventing interface, battery, input, button, and touchpad data from leaking between controllers.
 - Shipped `@types/w3c-web-hid` as a package dependency so consumers can resolve the `HIDDevice` type used by the generated declarations.
-- Made `DualShock4.init()` return `false` when device selection is cancelled and `true` after successful or previously completed initialization.
+- Made `DualShock4.connect()` return `false` when device selection is cancelled and `true` after a successful or previously completed connection.
 - Prevented a controller from retaining a selected device when opening that device fails.
 - Corrected thumbstick normalization so both endpoints map to the full `-1` to `1` range.
 - Corrected trigger dead-zone handling so values inside the dead zone normalize to zero.

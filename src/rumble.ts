@@ -19,7 +19,7 @@ export default class DualShock4Rumble {
    */
   updateRumble () {
     if (!this.controller.device) {
-      throw new Error('Controller not initialized. You must call .init() first!')
+      throw new Error('Controller not connected. You must call .connect() first!')
     }
     return this.controller.sendLocalState()
   }

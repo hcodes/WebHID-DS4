@@ -60,7 +60,7 @@ export default {
   methods: {
     async addController () {
       const controller = new DualShock4()
-      if (await controller.init()) {
+      if (await controller.connect()) {
         this.controllers.push(controller)
       }
     }

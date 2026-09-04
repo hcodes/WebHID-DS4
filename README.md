@@ -58,7 +58,7 @@ Add a connect button and an element for displaying the controller state:
 <pre id="controllerState"></pre>
 ```
 
-Then request the controller from the button handler. `init()` resolves to
+Then request the controller from the button handler. `connect()` resolves to
 `false` when the device picker is cancelled and rejects when access or opening
 the selected device fails.
 
@@ -80,7 +80,7 @@ if (!navigator.hid || typeof navigator.hid.requestDevice !== 'function') {
     try {
       const controller = new DualShock4()
 
-      if (!(await controller.init())) return
+      if (!(await controller.connect())) return
 
       function renderState () {
         const { axes, buttons, batteryCapacity, batteryStatus } = controller.state
@@ -98,7 +98,7 @@ if (!navigator.hid || typeof navigator.hid.requestDevice !== 'function') {
 
       renderState()
     } catch (error) {
-      console.error('Could not initialize the DualShock 4 controller:', error)
+      console.error('Could not connect the DualShock 4 controller:', error)
     }
   })
 }
@@ -118,7 +118,7 @@ input report. Its main properties are:
 | `timestamp` | Timestamp of the most recent input report |
 
 The asynchronous lightbar and rumble methods can be called immediately after
-`init()` succeeds. Until the first supported input report identifies USB or
+`connect()` succeeds. Until the first supported input report identifies USB or
 Bluetooth, output is deferred. Multiple early updates are combined, and their
 promises resolve after the latest lightbar and rumble state is sent using the
 correct report format:
@@ -131,6 +131,20 @@ await controller.lightbar.setColorHSL(0.22, 1, 0.5)
 
 await controller.rumble.setRumbleIntensity(64, 192)
 ```
+
+Close the WebHID session when the controller is no longer needed. The method
+is safe to call more than once and does not revoke the browser's permission to
+use the device:
+
+```js
+await controller.disconnect()
+```
+
+A successful disconnection stops rumble, clears the current controller state,
+and rejects output still waiting for transport detection with an `AbortError`.
+If the browser fails to close a device that remains open, the active session is
+restored and `disconnect()` rejects so it can be retried. The same `DualShock4`
+instance can be connected again later.
 
 ## Recognized devices
 
@@ -171,6 +185,8 @@ The current source includes these breaking changes compared with the published
 1.0.5 release:
 
 - The CommonJS build has been removed. Use the ESM import shown above.
+- `init()` has been replaced by `connect()`; use `disconnect()` to close the
+  WebHID session when finished.
 - `state.battery` has been replaced by `state.batteryCapacity`, which can be
   `null` when the controller reports an error or unknown value.
 - `state.charging` has been replaced by `state.batteryStatus`. The exported
