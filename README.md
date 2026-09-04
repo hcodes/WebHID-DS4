@@ -109,7 +109,7 @@ input report. Its main properties are:
 
 | Property | Description |
 | --- | --- |
-| `interface` | `none`, `usb`, or `bt`; detected after the first input report |
+| `interface` | `none`, `usb`, or `bt`; detected after the first supported input report |
 | `batteryCapacity` | Estimated capacity from 0 to 100, or `null` when unavailable |
 | `batteryStatus` | `discharging`, `charging`, `full`, `error`, or `unknown` |
 | `axes` | Normalized sticks and triggers plus raw motion sensor values |
@@ -117,8 +117,11 @@ input report. Its main properties are:
 | `touchpad.touches` | Current touch contacts and their coordinates |
 | `timestamp` | Timestamp of the most recent input report |
 
-After the first input report has identified the USB or Bluetooth interface,
-use the asynchronous lightbar and rumble methods to update controller output:
+The asynchronous lightbar and rumble methods can be called immediately after
+`init()` succeeds. Until the first supported input report identifies USB or
+Bluetooth, output is deferred. Multiple early updates are combined, and their
+promises resolve after the latest lightbar and rumble state is sent using the
+correct report format:
 
 ```js
 await controller.lightbar.setColorRGB(170, 255, 0)

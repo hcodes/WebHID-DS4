@@ -137,6 +137,352 @@ test('returns true when device initialization succeeds', async (t) => {
   assert.equal(device.opened, true)
 })
 
+test('shares one device initialization between concurrent init calls', async (t) => {
+  let finishOpen!: () => void
+  const openFinished = new Promise<void>((resolve) => {
+    finishOpen = resolve
+  })
+  let openCount = 0
+  const device = createDevice({
+    async open () {
+      openCount++
+      await openFinished
+      Object.assign(this, { opened: true })
+    }
+  })
+  let requestCount = 0
+  useHid(t, async () => {
+    requestCount++
+    return [device]
+  })
+
+  const controller = new DualShock4()
+  const firstInit = controller.init()
+  const secondInit = controller.init()
+
+  await Promise.resolve()
+
+  assert.equal(requestCount, 1)
+  assert.equal(openCount, 1)
+
+  finishOpen()
+  assert.deepEqual(await Promise.all([firstInit, secondInit]), [true, true])
+})
+
+test('defers an early lightbar update until a USB input report identifies the interface', async (t) => {
+  const sentReports: Array<{ reportId: number, data: Uint8Array }> = []
+  const device = createDevice({
+    async sendReport (reportId, data) {
+      sentReports.push({ reportId, data: new Uint8Array(data) })
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  const update = controller.lightbar.setColorRGB(170, 255, 0)
+
+  assert.deepEqual(sentReports, [])
+
+  emitUsbReport(device, 0x10)
+  await update
+
+  assert.equal(controller.state.interface, DualShock4Interface.USB)
+  assert.equal(sentReports.length, 1)
+  assert.equal(sentReports[0].reportId, 0x05)
+  assert.equal(sentReports[0].data.byteLength, 15)
+  assert.deepEqual(
+    Array.from(sentReports[0].data.slice(5, 8)),
+    [170, 255, 0]
+  )
+})
+
+test('sends the default player-one blue when USB becomes ready without early output', async (t) => {
+  const sentReports: Array<{ reportId: number, data: Uint8Array }> = []
+  const device = createDevice({
+    async sendReport (reportId, data) {
+      sentReports.push({ reportId, data: new Uint8Array(data) })
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  emitUsbReport(device, 0x10)
+  await Promise.resolve()
+
+  assert.equal(sentReports.length, 1)
+  assert.equal(sentReports[0].reportId, 0x05)
+  assert.deepEqual(
+    Array.from(sentReports[0].data.slice(5, 8)),
+    [0, 0, 64]
+  )
+})
+
+test('keeps early output pending when an unsupported input report arrives', async (t) => {
+  const sentReportIds: number[] = []
+  const device = createDevice({
+    async sendReport (reportId) {
+      sentReportIds.push(reportId)
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  const update = controller.rumble.setRumbleIntensity(64, 192)
+
+  device.oninputreport?.call(device, {
+    device,
+    reportId: 0x01,
+    data: new DataView(new ArrayBuffer(64)),
+    timeStamp: 1
+  } as HIDInputReportEvent)
+  await Promise.resolve()
+
+  assert.equal(controller.state.interface, DualShock4Interface.Disconnected)
+  assert.deepEqual(sentReportIds, [])
+
+  emitUsbReport(device, 0x10)
+  await update
+
+  assert.deepEqual(sentReportIds, [0x05])
+})
+
+test('sends an early lightbar update as Bluetooth after a valid Bluetooth input report', async (t) => {
+  const sentReports: Array<{ reportId: number, data: Uint8Array }> = []
+  const device = createDevice({
+    async sendReport (reportId, data) {
+      sentReports.push({ reportId, data: new Uint8Array(data) })
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  const update = controller.lightbar.setColorRGB(170, 255, 0)
+
+  device.oninputreport?.call(device, {
+    device,
+    reportId: 0x11,
+    data: new DataView(new ArrayBuffer(77)),
+    timeStamp: 1
+  } as HIDInputReportEvent)
+  await Promise.resolve()
+
+  assert.equal(controller.state.interface, DualShock4Interface.Bluetooth)
+  assert.equal(sentReports.length, 1)
+  assert.equal(sentReports[0].reportId, 0x11)
+  assert.equal(sentReports[0].data.byteLength, 77)
+  assert.deepEqual(
+    Array.from(sentReports[0].data.slice(7, 10)),
+    [170, 255, 0]
+  )
+  await update
+})
+
+test('coalesces early output updates into one report with the latest state', async (t) => {
+  const sentReports: Uint8Array[] = []
+  const device = createDevice({
+    async sendReport (_reportId, data) {
+      sentReports.push(new Uint8Array(data))
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  const obsoleteColorUpdate = controller.lightbar.setColorRGB(255, 0, 0)
+  const colorUpdate = controller.lightbar.setColorRGB(10, 20, 30)
+  const rumbleUpdate = controller.rumble.setRumbleIntensity(64, 192)
+
+  assert.deepEqual(sentReports, [])
+
+  emitUsbReport(device, 0x10)
+  await Promise.all([obsoleteColorUpdate, colorUpdate, rumbleUpdate])
+
+  assert.equal(sentReports.length, 1)
+  assert.deepEqual(
+    Array.from(sentReports[0].slice(3, 8)),
+    [64, 192, 10, 20, 30]
+  )
+})
+
+test('keeps an early output promise pending until the device send completes', async (t) => {
+  let finishSend!: () => void
+  const sendFinished = new Promise<void>((resolve) => {
+    finishSend = resolve
+  })
+  let sendStarted = false
+  const device = createDevice({
+    async sendReport () {
+      sendStarted = true
+      await sendFinished
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  let updateSettled = false
+  const update = controller.lightbar.setColorRGB(10, 20, 30).then(() => {
+    updateSettled = true
+  })
+
+  emitUsbReport(device, 0x10)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.equal(sendStarted, true)
+  assert.equal(updateSettled, false)
+
+  finishSend()
+  await update
+
+  assert.equal(updateSettled, true)
+})
+
+test('rejects every coalesced update when the deferred device send fails', async (t) => {
+  const sendError = new Error('Output failed')
+  const device = createDevice({
+    async sendReport () {
+      throw sendError
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  const colorUpdate = controller.lightbar.setColorRGB(10, 20, 30)
+  const rumbleUpdate = controller.rumble.setRumbleIntensity(64, 192)
+  const colorFailure = assert.rejects(colorUpdate, error => error === sendError)
+  const rumbleFailure = assert.rejects(rumbleUpdate, error => error === sendError)
+
+  emitUsbReport(device, 0x10)
+
+  await Promise.all([colorFailure, rumbleFailure])
+})
+
+test('waits for transport detection again when initialization selects another device', async (t) => {
+  const firstDevice = createDevice()
+  const secondReportIds: number[] = []
+  const secondDevice = createDevice({
+    async sendReport (reportId) {
+      secondReportIds.push(reportId)
+    }
+  })
+  let requestCount = 0
+  useHid(t, async () => [requestCount++ === 0 ? firstDevice : secondDevice])
+
+  const controller = new DualShock4()
+  await controller.init()
+  emitUsbReport(firstDevice, 0x10)
+
+  Object.assign(firstDevice, { opened: false })
+  await controller.init()
+
+  const update = controller.rumble.setRumbleIntensity(64, 192)
+
+  assert.equal(controller.state.interface, DualShock4Interface.Disconnected)
+  assert.deepEqual(secondReportIds, [])
+
+  secondDevice.oninputreport?.call(secondDevice, {
+    device: secondDevice,
+    reportId: 0x11,
+    data: new DataView(new ArrayBuffer(77)),
+    timeStamp: 2
+  } as HIDInputReportEvent)
+  await update
+
+  assert.equal(controller.state.interface, DualShock4Interface.Bluetooth)
+  assert.deepEqual(secondReportIds, [0x11])
+})
+
+test('ignores a queued input report from a replaced device', async (t) => {
+  const firstDevice = createDevice()
+  const secondReportIds: number[] = []
+  const secondDevice = createDevice({
+    async sendReport (reportId) {
+      secondReportIds.push(reportId)
+    }
+  })
+  let requestCount = 0
+  useHid(t, async () => [requestCount++ === 0 ? firstDevice : secondDevice])
+
+  const controller = new DualShock4()
+  await controller.init()
+  const staleReportHandler = firstDevice.oninputreport
+  assert.ok(staleReportHandler)
+
+  Object.assign(firstDevice, { opened: false })
+  await controller.init()
+  const update = controller.rumble.setRumbleIntensity(64, 192)
+
+  staleReportHandler.call(firstDevice, {
+    device: firstDevice,
+    reportId: 0x01,
+    data: new DataView(new ArrayBuffer(63)),
+    timeStamp: 1
+  } as HIDInputReportEvent)
+  await Promise.resolve()
+
+  assert.equal(controller.state.interface, DualShock4Interface.Disconnected)
+  assert.deepEqual(secondReportIds, [])
+
+  secondDevice.oninputreport?.call(secondDevice, {
+    device: secondDevice,
+    reportId: 0x11,
+    data: new DataView(new ArrayBuffer(77)),
+    timeStamp: 2
+  } as HIDInputReportEvent)
+  await update
+
+  assert.equal(controller.state.interface, DualShock4Interface.Bluetooth)
+  assert.deepEqual(secondReportIds, [0x11])
+})
+
+test('carries pending output into the replacement device readiness cycle', async (t) => {
+  const firstReportIds: number[] = []
+  const firstDevice = createDevice({
+    async sendReport (reportId) {
+      firstReportIds.push(reportId)
+    }
+  })
+  const secondReports: Array<{ reportId: number, data: Uint8Array }> = []
+  const secondDevice = createDevice({
+    async sendReport (reportId, data) {
+      secondReports.push({ reportId, data: new Uint8Array(data) })
+    }
+  })
+  let requestCount = 0
+  useHid(t, async () => [requestCount++ === 0 ? firstDevice : secondDevice])
+
+  const controller = new DualShock4()
+  await controller.init()
+  const update = controller.lightbar.setColorRGB(10, 20, 30)
+
+  Object.assign(firstDevice, { opened: false })
+  await controller.init()
+
+  emitUsbReport(secondDevice, 0x10)
+  await Promise.resolve()
+
+  assert.deepEqual(firstReportIds, [])
+  assert.equal(secondReports.length, 1)
+  assert.equal(secondReports[0].reportId, 0x05)
+  assert.deepEqual(
+    Array.from(secondReports[0].data.slice(5, 8)),
+    [10, 20, 30]
+  )
+  await update
+})
+
 test('returns true when the controller is already initialized', async (t) => {
   useHid(t, async () => {
     throw new Error('Device selection should not be requested')

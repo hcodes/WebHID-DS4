@@ -10,6 +10,13 @@ export type { BatteryStatus } from './state'
  * Main class.
  */
 export class DualShock4 {
+  private resolveInterfaceReady ?: () => void
+  private interfaceReady !: Promise<void>
+  private interfaceReadyResolved = false
+  private hasPendingOutput = false
+  private pendingOutput ?: Promise<void>
+  private initialization ?: Promise<boolean>
+
   /** Internal WebHID device */
   device ?: HIDDevice
 
@@ -30,6 +37,32 @@ export class DualShock4 {
     if (!navigator.hid || !navigator.hid.requestDevice) {
       throw new Error('WebHID not supported by browser or not available.')
     }
+
+    this.createInterfaceReady()
+  }
+
+  private createInterfaceReady () {
+    this.interfaceReadyResolved = false
+    this.interfaceReady = new Promise<void>((resolve) => {
+      this.resolveInterfaceReady = resolve
+    })
+  }
+
+  private resetInterfaceDetection () {
+    this.state.interface = DualShock4Interface.Disconnected
+
+    if (this.interfaceReadyResolved) {
+      this.pendingOutput = undefined
+      this.hasPendingOutput = false
+      this.createInterfaceReady()
+    }
+  }
+
+  private markInterfaceReady () {
+    if (this.interfaceReadyResolved) return
+
+    this.interfaceReadyResolved = true
+    this.resolveInterfaceReady?.()
   }
 
   /**
@@ -43,6 +76,18 @@ export class DualShock4 {
   async init (): Promise<boolean> {
     if (this.device && this.device.opened) return true
 
+    const initialization = this.initialization ??= this.initializeDevice()
+
+    try {
+      return await initialization
+    } finally {
+      if (this.initialization === initialization) {
+        this.initialization = undefined
+      }
+    }
+  }
+
+  private async initializeDevice (): Promise<boolean> {
     const devices = await navigator.hid.requestDevice({
       // TODO: Add more compatible controllers?
       filters: [
@@ -75,8 +120,12 @@ export class DualShock4 {
     const device = devices[0]
     if (!device) return false
 
+    const previousDevice = this.device
+
     await device.open()
 
+    if (previousDevice) previousDevice.oninputreport = null
+    this.resetInterfaceDetection()
     this.device = device
     device.oninputreport = (e : HIDInputReportEvent) => this.processControllerReport(e)
 
@@ -88,23 +137,32 @@ export class DualShock4 {
    * 
    * This function is called internally by the library each time a report is received.
    * 
-   * @param report - HID Report sent by the controller.
+  * @param report - HID Report sent by the controller.
    */
   private processControllerReport (report : HIDInputReportEvent) {
+    if (report.device !== this.device) return
+
     const { data } = report
     this.lastReport = data.buffer as ArrayBuffer
 
     // Interface is unknown
     if (this.state.interface === DualShock4Interface.Disconnected) {
-      if (data.byteLength === 63) {
+      if (report.reportId === 0x01 && data.byteLength === 63) {
         this.state.interface = DualShock4Interface.USB
-      } else {
+      } else if (report.reportId === 0x11 && data.byteLength === 77) {
         this.state.interface = DualShock4Interface.Bluetooth
+        this.markInterfaceReady()
         this.device!.receiveFeatureReport(0x02)
         return
+      } else {
+        return
       }
-      // Player 1 Color
-      this.lightbar.setColorRGB(0, 0, 64).catch(e => console.error(e))
+
+      if (!this.hasPendingOutput) {
+        // Player 1 Color
+        this.lightbar.setColorRGB(0, 0, 64).catch(e => console.error(e))
+      }
+      this.markInterfaceReady()
     }
 
     this.state.timestamp = report.timeStamp
@@ -220,10 +278,19 @@ export class DualShock4 {
   /**
    * Sends the local rumble and lightbar state to the controller.
    * 
-   * This function is called automatically in most cases.
+   * This function is called automatically in most cases. Output requested before
+   * the first supported input report is combined and sent once the interface is known.
    */
-  async sendLocalState () {
+  async sendLocalState (): Promise<void> {
     if (!this.device) throw new Error('Controller not initialized. You must call .init() first!')
+
+    if (this.state.interface === DualShock4Interface.Disconnected) {
+      this.hasPendingOutput = true
+      this.pendingOutput ??= this.interfaceReady.then(() => this.sendLocalState())
+      return this.pendingOutput
+    }
+
+    this.hasPendingOutput = false
 
     if (this.state.interface === DualShock4Interface.USB) {
       const report = new Uint8Array(16)
