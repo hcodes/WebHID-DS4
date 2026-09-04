@@ -18,6 +18,7 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 ### Changed
 
+- Updated the test and GitHub Pages workflows to use Node.js 26.
 - Modernized the development toolchain from Yarn, Rollup, Parcel 1, Vue 2, and TypeScript 3 to npm, Rolldown, Parcel 2, Vue 3, and TypeScript 6.
 - Updated the demo to use the Vue 3 application API and native ES modules.
 - Limited the published npm package to the generated `dist` files and added an automatic build before packaging.
