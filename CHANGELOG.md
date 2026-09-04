@@ -25,6 +25,7 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 ### Fixed
 
+- Corrected DualShock 4 gyroscope and accelerometer decoding to use the proper report offsets, signed values, and little-endian byte order.
 - Ensured each `DualShock4` instance has independent state, preventing interface, battery, input, button, and touchpad data from leaking between controllers.
 - Shipped `@types/w3c-web-hid` as a package dependency so consumers can resolve the `HIDDevice` type used by the generated declarations.
 - Made `DualShock4.init()` return `false` when device selection is cancelled and `true` after successful or previously completed initialization.

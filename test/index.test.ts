@@ -206,3 +206,46 @@ test('maps DualShock 4 battery data to capacity and status', async (t) => {
     assert.equal(controller.state.batteryStatus, expected.status, `raw status 0x${expected.raw.toString(16)}`)
   }
 })
+
+test('reads motion sensors as signed little-endian values from the DualShock 4 report', async (t) => {
+  const device = createDevice()
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  const data = new Uint8Array(63)
+  const view = new DataView(data.buffer)
+  view.setInt16(12, -32768, true)
+  view.setInt16(14, 0x1234, true)
+  view.setInt16(16, -2, true)
+  view.setInt16(18, 0x5678, true)
+  view.setInt16(20, -12345, true)
+  view.setInt16(22, 32767, true)
+
+  device.oninputreport?.call(device, {
+    device,
+    reportId: 0x01,
+    data: view,
+    timeStamp: 1
+  } as HIDInputReportEvent)
+
+  assert.deepEqual(
+    {
+      gyroX: controller.state.axes.gyroX,
+      gyroY: controller.state.axes.gyroY,
+      gyroZ: controller.state.axes.gyroZ,
+      accelX: controller.state.axes.accelX,
+      accelY: controller.state.axes.accelY,
+      accelZ: controller.state.axes.accelZ
+    },
+    {
+      gyroX: -32768,
+      gyroY: 0x1234,
+      gyroZ: -2,
+      accelX: 0x5678,
+      accelY: -12345,
+      accelZ: 32767
+    }
+  )
+})

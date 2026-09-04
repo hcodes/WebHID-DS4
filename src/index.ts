@@ -181,12 +181,12 @@ export class DualShock4 {
     }
     
     // Update motion input
-    this.state.axes.gyroX = data.getUint16(13)
-    this.state.axes.gyroY = data.getUint16(15)
-    this.state.axes.gyroZ = data.getUint16(17)
-    this.state.axes.accelX = data.getInt16(19)
-    this.state.axes.accelY = data.getInt16(21)
-    this.state.axes.accelZ = data.getInt16(23)
+    this.state.axes.gyroX = data.getInt16(12, true)
+    this.state.axes.gyroY = data.getInt16(14, true)
+    this.state.axes.gyroZ = data.getInt16(16, true)
+    this.state.axes.accelX = data.getInt16(18, true)
+    this.state.axes.accelY = data.getInt16(20, true)
+    this.state.axes.accelZ = data.getInt16(22, true)
 
     // Update touchpad
     this.state.touchpad.touches = []
