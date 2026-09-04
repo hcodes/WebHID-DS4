@@ -35,9 +35,11 @@ export class DualShock4 {
    * 
    * This function must be called in the context of user interaction
    * (i.e in a click event handler), otherwise it might not work.
+   *
+   * @returns `true` when the controller is initialized, or `false` when device selection is cancelled.
    */
-  async init () {
-    if (this.device && this.device.opened) return
+  async init (): Promise<boolean> {
+    if (this.device && this.device.opened) return true
 
     const devices = await navigator.hid.requestDevice({
       // TODO: Add more compatible controllers?
@@ -67,11 +69,15 @@ export class DualShock4 {
       ]
     })
 
-    this.device = devices[0]
+    const device = devices[0]
+    if (!device) return false
 
-    await this.device.open()
+    await device.open()
 
-    this.device.oninputreport = (e : HIDInputReportEvent) => this.processControllerReport(e)
+    this.device = device
+    device.oninputreport = (e : HIDInputReportEvent) => this.processControllerReport(e)
+
+    return true
   }
 
   /**

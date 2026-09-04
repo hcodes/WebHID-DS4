@@ -32,7 +32,7 @@ import { DualShock4 } from 'webhid-ds4'
 document.getElementById('connectButton').addEventListener('click', async () => {
   const DS4 = new DualShock4()
   // This will request the WebHID device and initialize the controller
-  await DS4.init()
+  if (!(await DS4.init())) return
   // Define a custom lightbar color
   await DS4.lightbar.setColorRGB(170, 255, 0)
   // The state object is updated periodically with the current controller state
