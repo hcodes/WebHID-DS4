@@ -6,6 +6,7 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 ### Breaking Changes
 
+- Removed the CommonJS build; the package is now distributed as ESM only.
 - Removed `DualShock4State.battery`. Use `batteryCapacity` instead; unlike the old field, it can be `null` when the controller reports an error or an unknown value.
 - Removed `DualShock4State.charging`. Use `batteryStatus === 'charging'` instead, or handle all `BatteryStatus` values when charging, full, error, and unknown states need to be distinguished.
 
