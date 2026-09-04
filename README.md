@@ -1,7 +1,7 @@
 # @hcodes/webhid-ds4
 
 [![npm version](https://img.shields.io/npm/v/@hcodes/webhid-ds4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ds4)
-[![npm downloads](https://img.shields.io/npm/dm/@hcodes/webhid-ps4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ds4)
+[![npm downloads](https://img.shields.io/npm/dm/@hcodes/webhid-ds4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ds4)
 [![npm package size](https://img.shields.io/npm/unpacked-size/@hcodes/webhid-ds4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ds4)
 [![fork of webhid-ds4@1.0.5](https://img.shields.io/badge/fork%20of-webhid--ds4%401.0.5-CB3837?logo=npm)](https://www.npmjs.com/package/webhid-ds4)
 
