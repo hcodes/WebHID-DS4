@@ -58,6 +58,23 @@ function emitUsbReport (device: HIDDevice, batteryStatus: number) {
   } as HIDInputReportEvent)
 }
 
+function setTouchPoint (
+  data: Uint8Array,
+  frameIndex: number,
+  pointIndex: number,
+  touchId: number,
+  x: number,
+  y: number,
+  active = true
+) {
+  const offset = 34 + frameIndex * 9 + pointIndex * 4
+
+  data[offset] = touchId | (active ? 0 : 0x80)
+  data[offset + 1] = x & 0xFF
+  data[offset + 2] = (x >> 8) & 0x0F | (y & 0x0F) << 4
+  data[offset + 3] = y >> 4
+}
+
 test('returns false when device selection is cancelled', async (t) => {
   useHid(t, async () => [])
 
@@ -248,4 +265,54 @@ test('reads motion sensors as signed little-endian values from the DualShock 4 r
       accelZ: 32767
     }
   )
+})
+
+test('uses the newest touchpad frame reported by the DualShock 4', async (t) => {
+  const device = createDevice()
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  const data = new Uint8Array(63)
+  data[32] = 3
+  setTouchPoint(data, 0, 0, 1, 100, 200)
+  setTouchPoint(data, 0, 1, 2, 300, 400)
+  setTouchPoint(data, 1, 0, 1, 500, 600)
+  setTouchPoint(data, 1, 1, 2, 700, 800)
+  setTouchPoint(data, 2, 0, 1, 900, 942)
+  setTouchPoint(data, 2, 1, 2, 1919, 0, false)
+
+  device.oninputreport?.call(device, {
+    device,
+    reportId: 0x01,
+    data: new DataView(data.buffer),
+    timeStamp: 1
+  } as HIDInputReportEvent)
+
+  assert.deepEqual(controller.state.touchpad.touches, [
+    { touchId: 1, x: 900, y: 942 }
+  ])
+})
+
+test('clears touchpad touches when the DualShock 4 reports no touch frames', async (t) => {
+  const device = createDevice()
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  controller.state.touchpad.touches.push({ touchId: 7, x: 100, y: 200 })
+
+  const data = new Uint8Array(63)
+  data[32] = 0
+
+  device.oninputreport?.call(device, {
+    device,
+    reportId: 0x01,
+    data: new DataView(data.buffer),
+    timeStamp: 1
+  } as HIDInputReportEvent)
+
+  assert.deepEqual(controller.state.touchpad.touches, [])
 })

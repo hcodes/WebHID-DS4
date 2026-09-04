@@ -191,19 +191,29 @@ export class DualShock4 {
 
     // Update touchpad
     this.state.touchpad.touches = []
-    if (!(data.getUint8(34) & 0x80)) {
-      this.state.touchpad.touches.push({
-        touchId: data.getUint8(34) & 0x7F,
-        x: (data.getUint8(36) & 0x0F) << 8 | data.getUint8(35),
-        y: data.getUint8(37) << 4 | (data.getUint8(36) & 0xF0) >> 4
-      })
-    }
-    if (!(data.getUint8(38) & 0x80)) {
-      this.state.touchpad.touches.push({
-        touchId: data.getUint8(38) & 0x7F,
-        x: (data.getUint8(40) & 0x0F) << 8 | data.getUint8(39),
-        y: data.getUint8(41) << 4 | (data.getUint8(40) & 0xF0) >> 4
-      })
+    const touchReportSize = 9
+    const firstTouchReportOffset = 33
+    const maxTouchReports = Math.floor((data.byteLength - firstTouchReportOffset) / touchReportSize)
+    const numTouchReports = Math.min(data.getUint8(32), maxTouchReports)
+
+    for (let reportIndex = 0; reportIndex < numTouchReports; reportIndex++) {
+      const reportOffset = firstTouchReportOffset + reportIndex * touchReportSize
+      const touches = []
+
+      for (let pointIndex = 0; pointIndex < 2; pointIndex++) {
+        const pointOffset = reportOffset + 1 + pointIndex * 4
+        const contact = data.getUint8(pointOffset)
+
+        if (!(contact & 0x80)) {
+          touches.push({
+            touchId: contact & 0x7F,
+            x: (data.getUint8(pointOffset + 2) & 0x0F) << 8 | data.getUint8(pointOffset + 1),
+            y: data.getUint8(pointOffset + 3) << 4 | (data.getUint8(pointOffset + 2) & 0xF0) >> 4
+          })
+        }
+      }
+
+      this.state.touchpad.touches = touches
     }
   }
 
