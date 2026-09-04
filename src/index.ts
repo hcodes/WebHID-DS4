@@ -113,7 +113,6 @@ export class DualShock4 {
     // Bluetooth Reports
     if (this.state.interface === DualShock4Interface.Bluetooth && report.reportId === 0x11) {
       this.updateState(new DataView(data.buffer, 2))
-      this.device!.receiveFeatureReport(0x02)
     }
   }
 

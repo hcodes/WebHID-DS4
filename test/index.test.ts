@@ -108,3 +108,30 @@ test('does not retain the selected device when opening fails', async (t) => {
   )
   assert.equal(controller.device, undefined)
 })
+
+test('requests the Bluetooth feature report only once', async (t) => {
+  let featureReportRequests = 0
+  const device = createDevice({
+    async receiveFeatureReport (reportId) {
+      assert.equal(reportId, 0x02)
+      featureReportRequests++
+      return new DataView(new ArrayBuffer(0))
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+
+  const report = {
+    device,
+    reportId: 0x11,
+    data: new DataView(new ArrayBuffer(77)),
+    timeStamp: 1
+  } as HIDInputReportEvent
+
+  device.oninputreport?.call(device, report)
+  device.oninputreport?.call(device, report)
+
+  assert.equal(featureReportRequests, 1)
+})
