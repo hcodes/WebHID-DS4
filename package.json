@@ -21,9 +21,11 @@
     "prepack": "node --run build",
     "test": "node --run build && tsx --test test/*.test.ts"
   },
+  "dependencies": {
+    "@types/w3c-web-hid": "^1.0.7"
+  },
   "devDependencies": {
     "@parcel/transformer-vue": "^2.16.4",
-    "@types/w3c-web-hid": "^1.0.7",
     "@vue/compiler-sfc": "^3.5.42",
     "parcel": "^2.16.4",
     "rolldown": "^1.2.7",
