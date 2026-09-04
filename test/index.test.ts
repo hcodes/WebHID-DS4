@@ -191,11 +191,69 @@ test('defers an early lightbar update until a USB input report identifies the in
   assert.equal(controller.state.interface, DualShock4Interface.USB)
   assert.equal(sentReports.length, 1)
   assert.equal(sentReports[0].reportId, 0x05)
-  assert.equal(sentReports[0].data.byteLength, 15)
+  assert.equal(sentReports[0].data.byteLength, 31)
   assert.deepEqual(
     Array.from(sentReports[0].data.slice(5, 8)),
     [170, 255, 0]
   )
+})
+
+test('sends the protocol-required 32-byte USB output report', async (t) => {
+  const sentReports: Array<{ reportId: number, data: Uint8Array }> = []
+  const device = createDevice({
+    async sendReport (reportId, data) {
+      sentReports.push({ reportId, data: new Uint8Array(data) })
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+  controller.state.interface = DualShock4Interface.USB
+
+  await controller.sendLocalState()
+
+  assert.equal(sentReports.length, 1)
+  assert.equal(sentReports[0].reportId, 0x05)
+  assert.equal(sentReports[0].data.byteLength + 1, 32)
+})
+
+test('sets only rumble and lightbar valid flags in USB output reports', async (t) => {
+  const sentReports: Uint8Array[] = []
+  const device = createDevice({
+    async sendReport (_reportId, data) {
+      sentReports.push(new Uint8Array(data))
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+  controller.state.interface = DualShock4Interface.USB
+
+  await controller.sendLocalState()
+
+  assert.equal(sentReports.length, 1)
+  assert.equal(sentReports[0][0], 0x03)
+})
+
+test('sets only rumble and lightbar valid flags in Bluetooth output reports', async (t) => {
+  const sentReports: Uint8Array[] = []
+  const device = createDevice({
+    async sendReport (_reportId, data) {
+      sentReports.push(new Uint8Array(data))
+    }
+  })
+  useHid(t, async () => [device])
+
+  const controller = new DualShock4()
+  await controller.init()
+  controller.state.interface = DualShock4Interface.Bluetooth
+
+  await controller.sendLocalState()
+
+  assert.equal(sentReports.length, 1)
+  assert.equal(sentReports[0][2], 0x03)
 })
 
 test('sends the default player-one blue when USB becomes ready without early output', async (t) => {

@@ -293,13 +293,13 @@ export class DualShock4 {
     this.hasPendingOutput = false
 
     if (this.state.interface === DualShock4Interface.USB) {
-      const report = new Uint8Array(16)
+      const report = new Uint8Array(32)
 
       // Report ID
       report[0] = 0x05
 
       // Enable Rumble (0x01), Lightbar (0x02)
-      report[1] = 0xF0 | 0x01 | 0x02
+      report[1] = 0x01 | 0x02
 
       // Light rumble motor
       report[4] = this.rumble.light
@@ -329,7 +329,7 @@ export class DualShock4 {
       // Poll Rate
       report[2] = 0x80
       // Enable rumble and lights
-      report[4] = 0xFF
+      report[4] = 0x01 | 0x02
 
       // Light rumble motor
       report[7] = this.rumble.light

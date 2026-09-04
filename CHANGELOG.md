@@ -31,6 +31,7 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 ### Fixed
 
+- Corrected DualShock 4 output reports to use protocol-compliant 32-byte USB packets and avoid setting reserved valid-flag bits over USB and Bluetooth, improving compatibility with third-party controllers.
 - Deferred and combined output updates made before the first supported input report, preventing Bluetooth-formatted reports from being sent to USB controllers before their interface is known.
 - Corrected DualShock 4 gyroscope and accelerometer decoding to use the proper report offsets, signed values, and little-endian byte order.
 - Corrected DualShock 4 touchpad parsing to honor `num_touch_reports`, process every reported frame, and expose the active contacts from the newest frame.
