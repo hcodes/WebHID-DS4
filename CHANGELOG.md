@@ -25,7 +25,7 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 ### Changed
 
-- Renamed the package to `@hcodes/webhid-ps4`, updated repository and demo links, and configured the scoped package for public npm publishing.
+- Renamed the package to `@hcodes/webhid-ds4`, updated repository and demo links, and configured the scoped package for public npm publishing.
 - Reworked the README to document current WebHID requirements, the v2 API, supported controller model identifiers, package usage, and fork attribution.
 - Updated the test and GitHub Pages workflows to use Node.js 26.
 - Modernized the development toolchain from Yarn, Rollup, Parcel 1, Vue 2, and TypeScript 3 to npm, Rolldown, Parcel 2, Vue 3, and TypeScript 6.

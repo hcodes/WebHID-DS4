@@ -1,8 +1,8 @@
-# @hcodes/webhid-ps4
+# @hcodes/webhid-ds4
 
-[![npm version](https://img.shields.io/npm/v/@hcodes/webhid-ps4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ps4)
-[![npm downloads](https://img.shields.io/npm/dm/@hcodes/webhid-ps4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ps4)
-[![npm package size](https://img.shields.io/npm/unpacked-size/@hcodes/webhid-ps4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ps4)
+[![npm version](https://img.shields.io/npm/v/@hcodes/webhid-ds4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ds4)
+[![npm downloads](https://img.shields.io/npm/dm/@hcodes/webhid-ps4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ds4)
+[![npm package size](https://img.shields.io/npm/unpacked-size/@hcodes/webhid-ds4.svg)](https://www.npmjs.com/package/@hcodes/webhid-ds4)
 [![fork of webhid-ds4@1.0.5](https://img.shields.io/badge/fork%20of-webhid--ds4%401.0.5-CB3837?logo=npm)](https://www.npmjs.com/package/webhid-ds4)
 
 A maintained fork of `webhid-ds4` and a high-level, ESM-first browser API for
@@ -36,11 +36,11 @@ control, and rumble over USB and Bluetooth.
 ## Installation
 
 ```sh
-npm install @hcodes/webhid-ps4
+npm install @hcodes/webhid-ds4
 ```
 
 ```js
-import { DualShock4 } from '@hcodes/webhid-ps4'
+import { DualShock4 } from '@hcodes/webhid-ds4'
 ```
 
 ## Quick start
@@ -57,7 +57,7 @@ Then request the controller from the button handler. `connect()` resolves to
 the selected device fails.
 
 ```js
-import { DualShock4 } from '@hcodes/webhid-ps4'
+import { DualShock4 } from '@hcodes/webhid-ds4'
 
 const connectButton = document.querySelector('#connectButton')
 const stateOutput = document.querySelector('#controllerState')
@@ -228,7 +228,7 @@ npm run build-docs
 
 - [Live demo](https://checkdevice.online/en/gamepad/dualshock-4)
 - [API reference](https://hcodes.github.io/WebHID-DS4/api/)
-- [npm package](https://www.npmjs.com/package/@hcodes/webhid-ps4)
+- [npm package](https://www.npmjs.com/package/@hcodes/webhid-ds4)
 - [Changelog](./CHANGELOG.md)
 - [MIT License](./LICENSE)
 
