@@ -1,5 +1,4 @@
-/** @internal */
-export const firmwareFeatureReportId = 0xA3
+import { firmwareFeatureReportId } from './consts'
 
 const firmwarePayloadLength = 48
 const firmwareFullReportLength = firmwarePayloadLength + 1

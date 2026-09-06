@@ -173,6 +173,42 @@ If the browser fails to close a device that remains open, the active session is
 restored and `disconnect()` rejects so it can be retried. The same `DualShock4`
 instance can be connected again later.
 
+### Connection events
+
+Each `DualShock4` instance is an `EventTarget` with typed `connect` and
+`disconnect` events. Subscribe before calling `connect()`:
+
+```ts
+controller.addEventListener('connect', ({ detail }) => {
+  console.log('Connected:', detail.device.productName)
+  console.log('Firmware:', controller.firmwareInfo)
+})
+
+controller.addEventListener('disconnect', ({ detail }) => {
+  console.log('Disconnected:', detail.device.productName, detail.reason)
+  // reason is 'manual' or 'device-lost'; controller state is already cleared.
+})
+```
+
+- `connect` fires once after the session opens and firmware detection finishes,
+  including when firmware information is unavailable. It does not wait for the
+  first input report to identify USB or Bluetooth.
+- `disconnect` fires once when an established session ends through `disconnect()`
+  (`manual`) or WebHID reports device loss (`device-lost`). The event retains the
+  previous `HIDDevice` in `detail.device`, while `controller.device` is cleared.
+- Cancelled selection, failed initialization, and repeated calls on an already
+  connected or disconnected controller do not produce extra events. Losing the
+  device during initialization rejects `connect()` with `AbortError`, without
+  emitting either event.
+- A failed `close()` that leaves the device open does not emit `disconnect`.
+  Device loss aborts pending output with `AbortError`; late operations and input
+  reports from that session cannot update a new session.
+
+Use `removeEventListener()`, `{ once: true }`, or `{ signal }` to manage
+subscriptions. Reconnection remains explicit via `connect()`; native WebHID
+`connect` events do not automatically open a controller session.
+
+
 ## Recognized devices
 
 The device picker currently recognizes these vendor and product IDs:
@@ -195,11 +231,6 @@ welcome.
 
 ## Known limitations
 
-- The library does not yet expose high-level connection or disconnection
-  events. Applications can use WebHID's native
-  [`connect`](https://developer.mozilla.org/docs/Web/API/HID/connect_event) and
-  [`disconnect`](https://developer.mozilla.org/docs/Web/API/HID/disconnect_event)
-  events directly.
 - A new `DualShock4` instance always opens the device picker. Previously
   granted devices can be discovered directly with
   [`navigator.hid.getDevices()`](https://developer.mozilla.org/docs/Web/API/HID/getDevices).

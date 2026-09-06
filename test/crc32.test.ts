@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { crc32 } from '../src/util/crc32'
+import { crc32 } from '../src/utils/crc32'
 
 test('returns zero for an empty buffer', () => {
   assert.equal(crc32(new Uint8Array()), 0)

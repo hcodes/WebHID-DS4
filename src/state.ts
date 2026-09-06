@@ -208,3 +208,6 @@ export function createDefaultState () : DualShock4State {
     timestamp: -1
   }
 }
+
+/** A detected transport for an open controller session. @internal */
+export type ControllerTransport = DualShock4Interface.USB | DualShock4Interface.Bluetooth

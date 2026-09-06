@@ -1,4 +1,4 @@
-export function processHue (p : number, q : number, t : number) {
+function processHue (p : number, q : number, t : number) {
   if (t < 0) t += 1
   if (t > 1) t -= 1
   if (t < 1/6) return p + (q - p) * 6 * t

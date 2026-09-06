@@ -69,7 +69,7 @@
     "excludeInternal": true,
     "externalPattern": "**/node_modules/**/*",
     "exclude": [
-      "**/util/**"
+      "**/utils/**"
     ]
   }
 }

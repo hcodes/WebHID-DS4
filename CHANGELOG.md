@@ -6,11 +6,26 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 ### Added
 
+- Added typed `connect` and `disconnect` events on each `DualShock4` instance, including `manual` and `device-lost` disconnect reasons.
+- Added automatic session cleanup and pending-operation cancellation on WebHID device loss, with protection against stale reports after reconnection.
 - Added ESLint checks for TypeScript, JavaScript, and Vue files, with `lint` and `lint:fix` commands and linting in CI.
 
 ### Changed
 
+- Moved the `DualShock4` implementation into its own module and kept `index.ts` as the public export entry point, preserving root package imports.
+- Grouped source modules into `controllers`, `effects`, `firmware`, `protocol`, and `utils`; kept shared constants in domain-specific `consts.ts` files and implementation-only constants beside their usage.
+- Separated connection lifecycle, output scheduling, input/output report handling, and firmware reads from the public `DualShock4` class. Lightbar and rumble constructors accept a single output callback.
+- Simplified lifecycle callbacks and added typed event dispatch, checking event names and payloads against the same map used by listeners.
+- Unified USB/Bluetooth transport initialization, simplified pending output, and centralized feature-report timeouts and cancellation cleanup.
+- Split input-state decoding into focused functions, removed duplicate battery and report-detection logic, and separated input normalization from output-value clamping.
+- Aligned class filenames with their class names and replaced abbreviated private effect fields with descriptive intensity names.
+- Organized controller integration tests by connection, events, input, and output with shared WebHID fixtures and deferred-promise helpers.
 - Reduced the optional `isClone` feature-report check timeout from one second to 250 ms so unresponsive controllers finish connecting sooner; the firmware information request still uses a one-second timeout.
+
+### Fixed
+
+- Handled rejected Bluetooth initialization feature reports without unhandled promise rejections.
+- Preserved `AbortError` for coalesced output cancelled immediately after transport detection.
 
 ## [2.0.1]
 

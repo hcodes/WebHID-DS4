@@ -1,3 +1,7 @@
+/**
+ * @module
+ * @internal
+ */
 export function normalizeThumbstick (input : number, deadZone = 0) {
   const rel = (input - 128) / (input < 128 ? 128 : 127)
   if (Math.abs(rel) <= deadZone) return 0

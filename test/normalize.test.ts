@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { normalizeThumbstick, normalizeTrigger } from '../src/util/normalize'
+import { normalizeThumbstick, normalizeTrigger } from '../src/protocol/normalize'
 
 test('normalizes both thumbstick endpoints to full scale', () => {
   assert.equal(normalizeThumbstick(0), -1)
