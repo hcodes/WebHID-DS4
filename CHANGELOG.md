@@ -2,6 +2,16 @@
 
 All notable changes made in this fork after the upstream `1.0.5` release are documented in this file.
 
+## [2.0.2]
+
+### Added
+
+- Added ESLint checks for TypeScript, JavaScript, and Vue files, with `lint` and `lint:fix` commands and linting in CI.
+
+### Changed
+
+- Reduced the optional `isClone` feature-report check timeout from one second to 250 ms so unresponsive controllers finish connecting sooner; the firmware information request still uses a one-second timeout.
+
 ## [2.0.1]
 
 ### Fixed
