@@ -216,12 +216,15 @@ CI uses Node.js 26 and npm.
 
 ```sh
 npm ci
+npm run lint
 npm test
 npm run build
 npm run build-docs
 ```
 
 - `npm run build` creates the ESM bundle and TypeScript declarations in `dist`.
+- `npm run lint` checks TypeScript, JavaScript, and Vue files with ESLint.
+  Use `npm run lint:fix` to apply automatic fixes.
 - `npm run build-docs` creates the demo and API reference in `dist-pages`.
 
 ## Links

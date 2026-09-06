@@ -25,8 +25,8 @@ export function hslToRgb (h : number, s : number, l : number) {
   if (s === 0) {
     outColor.r = outColor.g = outColor.b = l * 255 // Achromatic
   } else {
-    var q = l < 0.5 ? l * (1 + s) : l + s - l * s
-    var p = 2 * l - q
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s
+    const p = 2 * l - q
 
     outColor.r = processHue(p, q, h + 1 / 3) * 255
     outColor.g = processHue(p, q, h) * 255

@@ -53,6 +53,7 @@ import { reactive } from 'vue'
 import { DualShock4 } from '../src'
 
 export default {
+  name: 'ControllerDemo',
   data () {
     return {
       controllers: []
