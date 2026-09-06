@@ -230,7 +230,7 @@ test('connect identifies a controller that rejects report 0x81 as a clone', asyn
   assert.equal(controller.isClone, true)
 })
 
-test('connect stops waiting for an unresponsive clone check after one second', async (t) => {
+test('connect stops waiting for an unresponsive clone check after 250 ms', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   let cloneProbeRequested = false
   const device = createDevice(reportId => {
@@ -247,7 +247,7 @@ test('connect stops waiting for an unresponsive clone check after one second', a
   for (let index = 0; index < 8; index++) await Promise.resolve()
   assert.equal(cloneProbeRequested, true)
 
-  t.mock.timers.tick(999)
+  t.mock.timers.tick(249)
   for (let index = 0; index < 4; index++) await Promise.resolve()
   assert.equal(await Promise.race([connection, Promise.resolve('pending')]), 'pending')
 

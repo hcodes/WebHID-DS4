@@ -17,13 +17,14 @@ const bluetoothInputReportLength = 77
 const bluetoothInputCrcOffset = 73
 const bluetoothInputStateOffset = 2
 const featureReportTimeoutMs = 1000
+const cloneCheckTimeoutMs = 250
 const originalControllerFeatureReportId = 0x81
 
-function receiveFeatureReportWithTimeout (device: HIDDevice, reportId: number): Promise<DataView> {
+function receiveFeatureReportWithTimeout (device: HIDDevice, reportId: number, timeoutMs: number): Promise<DataView> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new DOMException('Feature report request timed out.', 'TimeoutError'))
-    }, featureReportTimeoutMs)
+    }, timeoutMs)
 
     void device.receiveFeatureReport(reportId).then(
       report => {
@@ -170,10 +171,10 @@ export class DualShock4 {
    * Reads DualShock 4 feature report 0xA3 and updates {@link firmwareInfo} and
    * {@link isClone}.
    *
-   * Both USB and Bluetooth controllers use this report. The request and the
-   * follow-up clone check time out after one second. Unsupported, timed out, or
-   * malformed reports return `null` so compatible third-party controllers can
-   * still be used.
+   * Both USB and Bluetooth controllers use this report. The firmware request
+   * times out after one second; the optional follow-up clone check uses a
+   * shorter timeout. Unsupported, timed out, or malformed reports return
+   * `null` so compatible third-party controllers can still be used.
    */
   async readFirmwareInfo (): Promise<DualShock4FirmwareInfo | null> {
     const device = this.device
@@ -187,13 +188,13 @@ export class DualShock4 {
     const request = ++this.firmwareInfoRequest
 
     try {
-      const report = await receiveFeatureReportWithTimeout(device, firmwareFeatureReportId)
+      const report = await receiveFeatureReportWithTimeout(device, firmwareFeatureReportId, featureReportTimeoutMs)
       const firmwareInfo = parseFirmwareInfo(report)
       let isClone = true
 
       if (firmwareInfo) {
         try {
-          await receiveFeatureReportWithTimeout(device, originalControllerFeatureReportId)
+          await receiveFeatureReportWithTimeout(device, originalControllerFeatureReportId, cloneCheckTimeoutMs)
           isClone = false
         } catch {
           isClone = true
