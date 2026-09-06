@@ -2,7 +2,7 @@
 
 All notable changes made in this fork after the upstream `1.0.5` release are documented in this file.
 
-## [2.0.2]
+## [2.1.0]
 
 ### Added
 
