@@ -7,7 +7,7 @@ import DualShock4Lightbar from './effects/DualShock4Lightbar'
 import DualShock4Rumble from './effects/DualShock4Rumble'
 import type { DualShock4FirmwareInfo } from './firmware/parseFirmwareInfo'
 import { OutputController } from './controllers/OutputController'
-import { detectInputInterface, getInputStateData, isMinimalBluetoothReport, isValidBluetoothInputReport, updateControllerState } from './protocol/input'
+import { detectInputInterface, getInputStateData, normalizeInputReport, isValidBluetoothInputReport, updateControllerState } from './protocol/input'
 
 /**
  * Main class.
@@ -172,16 +172,8 @@ export class DualShock4 extends EventTarget {
   private processControllerReport (report : HIDInputReportEvent) {
     if (report.device !== this.device) return
 
-    const { data } = report
-    this.lastReport = data.buffer as ArrayBuffer
-
-    // Bluetooth may use a minimal report until feature report 0x02 is requested.
-    if (isMinimalBluetoothReport(report.reportId, data)) {
-      if (this.state.interface === DualShock4Interface.Disconnected) {
-        this.initializeTransport(DualShock4Interface.Bluetooth)
-      }
-      return
-    }
+    const data = normalizeInputReport(report.reportId, report.data, report.device.collections)
+    this.lastReport = report.data.buffer.slice(report.data.byteOffset, report.data.byteOffset + report.data.byteLength) as ArrayBuffer
 
     if (report.reportId === bluetoothInputReportId && !isValidBluetoothInputReport(data)) return
 
@@ -190,13 +182,12 @@ export class DualShock4 extends EventTarget {
       const transport = detectInputInterface(report.reportId, data)
       if (!transport) return
       this.initializeTransport(transport)
-      if (transport === DualShock4Interface.Bluetooth) return
     }
 
-    this.state.timestamp = report.timeStamp
-
     const stateData = getInputStateData(report.reportId, data, this.state.interface)
-    if (stateData) updateControllerState(this.state, stateData)
+    if (!stateData) return
+    this.state.timestamp = report.timeStamp
+    updateControllerState(this.state, stateData)
   }
 
   private initializeTransport (transport: ControllerTransport) {

@@ -388,3 +388,74 @@ for (const format of ['minimal', 'full']) {
     await controller.disconnect()
   })
 }
+
+function windowsBluetoothCollections (length = 547): HIDCollectionInfo[] {
+  return [{
+    inputReports: [0x01, 0x11, 0x19].map(reportId => ({
+      reportId, items: [{ reportSize: 8, reportCount: length }]
+    })), children: []
+  }] as unknown as HIDCollectionInfo[]
+}
+
+for (const length of [9, 77, 547]) {
+  test(`updates buttons from a ${length}-byte basic Bluetooth report`, async (t) => {
+    const device = createDevice({ collections: windowsBluetoothCollections(length) })
+    useHid(t, async () => [device])
+    const controller = new DualShock4()
+    await controller.connect()
+    controller.state.batteryCapacity = 55
+    controller.state.axes.gyroX = 123
+    const buffer = new Uint8Array(length + 16)
+    buffer.set([255, 128, 128, 128, 0x28, 0, 0, 255, 0], 8)
+    device.oninputreport?.call(device, {
+      device, reportId: 1, data: new DataView(buffer.buffer, 8, length), timeStamp: 42
+    } as HIDInputReportEvent)
+    assert.equal(controller.state.interface, DualShock4Interface.Bluetooth)
+    assert.equal(controller.state.buttons.cross, true)
+    assert.equal(controller.state.axes.leftStickX, 1)
+    assert.equal(controller.state.axes.l2, 1)
+    assert.equal(controller.state.timestamp, 42)
+    assert.equal(controller.state.batteryCapacity, 55)
+    assert.equal(controller.state.axes.gyroX, 123)
+    buffer[12] = 8
+    device.oninputreport?.call(device, {
+      device, reportId: 1, data: new DataView(buffer.buffer, 8, length), timeStamp: 43
+    } as HIDInputReportEvent)
+    assert.equal(controller.state.buttons.cross, false)
+    await controller.disconnect()
+  })
+}
+
+test('parses a Windows padded extended Bluetooth report while preserving CRC checks', async (t) => {
+  const device = createDevice({ collections: windowsBluetoothCollections() })
+  useHid(t, async () => [device])
+  const controller = new DualShock4()
+  await controller.connect()
+  const source = createBluetoothReportData()
+  const bytes = new Uint8Array(563)
+  bytes.set(new Uint8Array(source.buffer, source.byteOffset, source.byteLength), 8)
+  const data = new DataView(bytes.buffer, 8, 547)
+  const emit = (timeStamp: number) => device.oninputreport?.call(device, {
+    device, reportId: 0x11, data, timeStamp
+  } as HIDInputReportEvent)
+  emit(42)
+  assert.equal(controller.state.interface, DualShock4Interface.Bluetooth)
+  assert.equal(controller.state.axes.leftStickX, 1)
+  assert.equal(controller.state.timestamp, 42)
+  data.setUint8(73, data.getUint8(73) ^ 0xFF)
+  emit(43)
+  assert.equal(controller.state.timestamp, 42)
+  await controller.disconnect()
+})
+
+test('does not interpret an arbitrary oversized basic report as Bluetooth', async (t) => {
+  const device = createDevice()
+  useHid(t, async () => [device])
+  const controller = new DualShock4()
+  await controller.connect()
+  device.oninputreport?.call(device, {
+    device, reportId: 1, data: new DataView(new ArrayBuffer(547)), timeStamp: 42
+  } as HIDInputReportEvent)
+  assert.equal(controller.state.interface, DualShock4Interface.Disconnected)
+  await controller.disconnect()
+})

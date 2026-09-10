@@ -2,6 +2,13 @@
 
 All notable changes made in this fork after the upstream `1.0.5` release are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Restored Windows Chrome Bluetooth input handling: trim descriptor-confirmed HID padding, update buttons and axes from basic reports, and parse the first valid full report while preserving CRC validation.
+- Restored reactive state updates in the demo for native HID callbacks and disconnects.
+
 ## [2.1.0]
 
 ### Added

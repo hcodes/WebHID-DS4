@@ -14,6 +14,28 @@ const bluetoothInputReportLength = 77
 const bluetoothInputCrcOffset = 73
 const bluetoothInputStateOffset = 2
 
+/** Trim Windows HID collection padding, only when the descriptor confirms it. */
+export function normalizeInputReport (reportId: number, data: DataView, collections: readonly HIDCollectionInfo[]): DataView {
+  const reports: HIDReportInfo[] = []
+  const visit = (items: readonly HIDCollectionInfo[]) => {
+    for (const collection of items) {
+      reports.push(...(collection.inputReports ?? []))
+      visit(collection.children ?? [])
+    }
+  }
+  visit(collections)
+  if (!reports.some(report => report.reportId === bluetoothInputReportId)) return data
+  const length = reportId === basicInputReportId ? minimalBluetoothInputReportLength
+    : reportId === bluetoothInputReportId ? bluetoothInputReportLength : undefined
+  if (!length || data.byteLength <= length) return data
+  // Chromium reconstructs each Windows report with padding to the collection's
+  // maximum input length, including reports 0x01 (9 bytes) and 0x11 (77 bytes).
+  const declaredLength = Math.max(0, ...reports.filter(report => report.reportId === reportId).map(report =>
+    Math.ceil((report.items ?? []).reduce((bits, item) => bits + (item.reportSize ?? 0) * (item.reportCount ?? 0), 0) / 8)))
+  if (data.byteLength !== declaredLength) return data
+  return new DataView(data.buffer, data.byteOffset, length)
+}
+
 export function isValidBluetoothInputReport (data: DataView): boolean {
   if (data.byteLength !== bluetoothInputReportLength) return false
 
@@ -39,7 +61,8 @@ export function isMinimalBluetoothReport (reportId: number, data: DataView): boo
 }
 
 export function getInputStateData (reportId: number, data: DataView, transport: DualShock4Interface): DataView | undefined {
-  if (transport === DualShock4Interface.USB && reportId === basicInputReportId) return data
+  if (transport === DualShock4Interface.USB && reportId === basicInputReportId && data.byteLength === usbInputReportLength) return data
+  if (transport === DualShock4Interface.Bluetooth && isMinimalBluetoothReport(reportId, data)) return data
   if (transport === DualShock4Interface.Bluetooth && reportId === bluetoothInputReportId) {
     return new DataView(data.buffer, data.byteOffset + bluetoothInputStateOffset, bluetoothInputCrcOffset - bluetoothInputStateOffset)
   }
@@ -49,6 +72,8 @@ export function getInputStateData (reportId: number, data: DataView, transport: 
 export function updateControllerState (state: DualShock4State, data: DataView) {
   updateAxes(state, data)
   updateButtons(state, data)
+  // Basic Bluetooth input contains buttons/sticks/triggers, but no sensors.
+  if (data.byteLength === minimalBluetoothInputReportLength) return
   updateBattery(state, data)
   updateMotion(state, data)
   updateTouchpad(state, data)

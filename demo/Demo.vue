@@ -61,7 +61,14 @@ export default {
   },
   methods: {
     async addController () {
-      const controller = reactive(new DualShock4())
+      const rawController = new DualShock4()
+      // HID callbacks use the original instance captured in the constructor.
+      rawController.state = reactive(rawController.state)
+      const controller = reactive(rawController)
+      rawController.addEventListener('disconnect', () => {
+        rawController.state = reactive(rawController.state)
+        this.controllers = [...this.controllers]
+      })
       if (await controller.connect()) {
         this.controllers.push(controller)
       }
