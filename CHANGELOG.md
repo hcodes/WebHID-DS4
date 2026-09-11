@@ -2,13 +2,6 @@
 
 All notable changes made in this fork after the upstream `1.0.5` release are documented in this file.
 
-## [Unreleased]
-
-### Fixed
-
-- Restored Windows Chrome Bluetooth input handling: trim descriptor-confirmed HID padding, update buttons and axes from basic reports, and parse the first valid full report while preserving CRC validation.
-- Restored reactive state updates in the demo for native HID callbacks and disconnects.
-
 ## [2.1.0]
 
 ### Added
@@ -33,6 +26,9 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 - Handled rejected Bluetooth initialization feature reports without unhandled promise rejections.
 - Preserved `AbortError` for coalesced output cancelled immediately after transport detection.
+- Restored Windows Chrome Bluetooth input handling: trim descriptor-confirmed HID padding, update buttons and axes from basic reports, and parse the first valid full report while preserving CRC validation.
+- Restored reactive state updates in the demo for native HID callbacks and disconnects.
+
 
 ## [2.0.1]
 
