@@ -30,6 +30,7 @@ control, and rumble over USB and Bluetooth.
 - Firmware build, raw hardware/firmware versions, known board model, and clone check
 - RGB and HSL lightbar control
 - Light and heavy rumble motors
+- Optional headphone audio: support detection, explicit audio output selection, and live MediaStream playback
 - Bundled TypeScript declarations
 
 ## Installation
@@ -207,6 +208,171 @@ Use `removeEventListener()`, `{ once: true }`, or `{ signal }` to manage
 subscriptions. Reconnection remains explicit via `connect()`; native WebHID
 `connect` events do not automatically open a controller session.
 
+
+## Headphone audio
+
+`controller.audio.headphones` controls stereo playback through the controller's
+3.5 mm headphone jack. The `DualShock4Headphones` class is a separate endpoint
+inside `DualShock4Audio`; the built-in mono speaker is **not implemented** and
+can later have its own `controller.audio.speaker` API without changing headphone
+names or behavior.
+
+Headphone audio uses an OS audio output through Web Audio, independently of HID
+rumble/lightbar reports. It plays audio supplied by this page; it does not capture
+system audio or change the system default output. No audio permission is requested
+by `connect()` or `checkSupport()`.
+
+### Check support
+
+After connecting the controller:
+
+```js
+const headphones = controller.audio.headphones
+const support = await headphones.checkSupport()
+console.log(support.supported, support.reason, support.connection)
+console.log(support.outputs, support.requiresAdapter)
+```
+
+| Field | Meaning |
+| --- | --- |
+| `supported` | `true`: a concrete output was explicitly selected, routed successfully and is still enumerated; `false`: the browser/session or standard hardware connection cannot provide this path; `null`: more information, permission or selection is needed |
+| `reason` | Machine-readable diagnostic listed below |
+| `outputs` | Label-matched candidates, plus the selected output; never proof of association with this HID controller |
+| `connection` | `usb`, `bluetooth`, `sony-adapter`, or `unknown` before transport detection |
+| `requiresAdapter` | Model-based recommendation: `true` for the standard v1 path and v2 over ordinary Bluetooth; `false` for v2 over USB, the Sony adapter or successful explicit routing; `null` for unknown hardware/transport. `false` does not prove that an audio output exists |
+
+Common reasons are `selection-required`, `permission-or-device-unavailable`,
+`permission-denied`, `output-unavailable`, `v1-usb-audio-unavailable`,
+`bluetooth-audio-unavailable`, `insecure-context`, `api-unavailable`,
+`controller-disconnected`, `enumeration-failed`, `routing-failed`, and `ready`.
+Only `supported === true` enables playback. A permission failure does not prove
+that the hardware lacks audio support. An empty or incomplete device list stays
+unknown because the browser can hide devices and labels before permission.
+
+The expected name is **Wireless Controller**. Matching is case-insensitive and
+also recognizes DualShock/CUH-ZWA1 labels. DualSense and multiple DS4 controllers
+can have the same name. Browser media devices do not expose USB VID/PID or a
+reliable HID-to-audio mapping, so the user must choose the correct headphone
+output. A custom-labelled output can also be selected explicitly, including one
+provided by an external driver.
+
+### Permission, selection and playback
+
+Use separate UI actions to grant access, select an output, and play sound:
+
+```js
+// Within an access button's click handler:
+const outputs = await headphones.requestOutput()
+// Populate a chooser with outputs: display label, use deviceId as the value.
+
+// Within the chooser's change handler, using the user's selected value:
+await headphones.setOutput(selectedDeviceId)
+console.log((await headphones.checkSupport()).supported) // true if routed
+
+// Within a play button click handler, pass a live MediaStream:
+// e.g. a WebRTC stream, or a Web Audio MediaStreamDestination.stream.
+await headphones.play(stream)
+
+headphones.stop()
+```
+
+Handle rejections from these async methods in the application's UI. The demo
+includes complete controls, error handling, and its own live oscillator test
+stream passed to `play()`. The bundled `example.mp3` plays through a media element
+connected to a MediaStreamDestination without reading the whole file into an
+ArrayBuffer. Test-tone generation and media-source management belong to the demo.
+The demo automatically routes a single matching controller output on connection,
+after output access is granted, or when Check support is pressed. Multiple matches
+require manual selection, and an existing selection is preserved.
+The demo lists only controller-matched outputs. If none are visible, it hides the
+selector and displays connection guidance.
+
+- `requestOutput()` must be called from a user action. If supported, it opens
+  `selectAudioOutput()` and returns the chosen concrete output as an array.
+  Otherwise it requests `getUserMedia({ audio: true })`, stops every capture track
+  immediately, and returns all visible concrete audio outputs for manual choice.
+  It does not record or retain microphone audio. A native picker refusal does not
+  trigger a second microphone permission prompt.
+- `enumerateDevices()` itself does not require a click, but its list is subject
+  to permissions. The native picker grants the selected device; the microphone
+  fallback exposes the broader device list. OS-disabled or browser-blocked
+  devices may still be absent.
+- `setOutput(deviceId)` verifies routing with `AudioContext.setSinkId()` without
+  playing sound. Empty, `default`, and `communications` IDs are rejected to avoid
+  following a changing system default. A failed routing/selection attempt clears
+  the old route. HID functionality remains available.
+- `play(MediaStream)` connects a live stream to the selected headphone output
+  using `createMediaStreamSource()`, replacing the previous source. It resolves
+  when the stream is connected, not when it ends. Supply exactly one live audio
+  track, which may carry mono or stereo audio. Mix multiple tracks upstream using
+  Web Audio if needed. The library never accumulates or decodes an entire file.
+  Call from a click to satisfy autoplay restrictions. A producer AudioContext may
+  also need to be resumed by the application.
+- `stop()` disconnects the source and cancels pending resume, preserving the
+  route. The caller owns the MediaStream and its tracks: `stop()`, `reset()`,
+  output changes and controller disconnection never call `track.stop()`. Stop
+  upstream playback/capture separately when the application no longer needs it. `reset()` disconnects playback, clears routing and releases device listeners;
+  the endpoint can be used again after an explicit selection.
+- On controller disconnection or removal of the selected audio device, playback
+  stops and the route is cleared. Pending work cannot revive an old session. A
+  disconnect attempt also clears audio when HID closing fails; select the output
+  again after such a failure. There is no automatic fallback to default speakers.
+
+Listen for endpoint changes and recheck support rather than caching it forever:
+
+```js
+headphones.addEventListener('change', async () => {
+  const support = await headphones.checkSupport()
+  // Refresh status and disable playback unless support.supported === true.
+})
+```
+
+`change` also fires after routing/permission changes and reset. A successful
+check proves that the browser accepted the route, not that headphones are
+inserted, unmuted or audible. Use the demo stereo test for physical confirmation.
+
+### PC hardware limitations
+
+| Controller / connection | Standard headphone audio path |
+| --- | --- |
+| DS4 v1, CUH-ZCT1, USB cable (`054C:05C4`) | No USB Audio Class interface; use the Sony wireless adapter |
+| DS4 v2, CUH-ZCT2, USB cable (`054C:09CC`) | USB headphone audio, provided the OS exposes and enables the output |
+| DS4 v1, ordinary Bluetooth | Standard PC connection does not expose headphone audio; the library recommends the Sony adapter |
+| DS4 v2, CUH-ZCT2, Bluetooth (`054C:09CC`) | No headphone audio over standard Bluetooth; use the Sony USB wireless receiver or a USB cable |
+| Sony DUALSHOCK 4 USB Wireless Adaptor, CUH-ZWA1 (`054C:0BA0`) | Wireless headphone audio through the adapter's OS audio output |
+| Third-party controllers, bridges and virtual devices | Unknown until the user selects and verifies an actual output |
+
+The required “stick” for the standard v1 PC path is the **Sony DUALSHOCK 4 USB
+Wireless Adaptor CUH-ZWA1**, not an ordinary Bluetooth dongle. Its HID ID is
+already recognized by this library. Adapter recognition alone does not prove
+that audio is enabled or that the headphones are attached.
+
+For v2, USB returns `requiresAdapter: false`. Ordinary Bluetooth returns
+`supported: false`, `reason: 'bluetooth-audio-unavailable'` and
+`requiresAdapter: true`, just as for v1. Wireless headphone audio needs the Sony
+CUH-ZWA1 USB receiver; an ordinary Bluetooth dongle is not a substitute. A v2
+controller can alternatively use a USB cable. The demo does not automatically
+select a label-matched output when this unsupported transport is detected.
+
+This is a limitation of the standard audio path, not a claim that Bluetooth
+audio is technically impossible. Native experimental streamers and custom
+drivers can implement a separate transport; this library does not implement
+that protocol. Explicit selection of a working OS output overrides the standard
+hardware hint.
+
+Sources: [Sony adapter announcement](https://blog.playstation.com/2016/08/23/playstation-now-coming-to-pc-dualshock-4-usb-wireless-adaptor-unveiled/),
+[Sony Bluetooth limitations](https://www.playstation.com/en-us/support/hardware/ps4-pair-dualshock-4-wireless-with-pc-or-mac/),
+[v1/v2 USB hardware probes](https://github.com/hifihedgehog/HIDMaestro/blob/master/README.md),
+[experimental DS4 Bluetooth audio](https://github.com/nefarius/DS4AudioStreamer).
+The device-discovery approach follows [dualsense-ts/audio.ts](https://github.com/nsfm/dualsense-ts/blob/main/src/audio.ts);
+browser routing and permissions follow [Chrome's Web Audio guidance](https://developer.chrome.com/blog/audiocontext-setsinkid)
+and the [Audio Output Devices specification](https://w3c.github.io/mediacapture-output/).
+
+The endpoint requires HTTPS/localhost and a browser with `AudioContext.setSinkId`
+(Chrome 110+ introduced it; feature detection is performed at runtime). Embedded
+pages may also need `speaker-selection` and `microphone` Permissions Policy
+allowances from their parent. To verify the hardware, use the demo's left/right
+test and confirm that each tone is audible in the corresponding headphone.
 
 ## Recognized devices
 

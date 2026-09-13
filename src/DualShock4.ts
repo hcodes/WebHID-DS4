@@ -1,4 +1,5 @@
 import { readControllerFirmware } from './firmware/readFirmwareInfo'
+import { DualShock4Audio } from './audio/DualShock4Audio'
 import { ConnectionController, type ConnectionSession } from './controllers/ConnectionController'
 import type { DualShock4EventMap, DualShock4DisconnectReason } from './events'
 import { bluetoothInputReportId } from './protocol/consts'
@@ -32,6 +33,8 @@ export class DualShock4 extends EventTarget {
   set device (device: HIDDevice | undefined) {
     if (device === this.device) return
     this.connection.device = device
+    if (device?.opened) this.audio.attach()
+    else this.audio.reset()
     if (device) this.output.attach(device, this.connection.session?.signal)
     else this.output.clear(new DOMException('Controller disconnected.', 'AbortError'))
   }
@@ -57,6 +60,13 @@ export class DualShock4 extends EventTarget {
   lightbar = new DualShock4Lightbar(() => this.requestOutputUpdate())
   /** Allows rumble control */
   rumble = new DualShock4Rumble(() => this.requestOutputUpdate())
+
+  /** Optional browser audio output selection, support detection and headphone playback. */
+  readonly audio = new DualShock4Audio(() => ({
+    device: this.device,
+    transport: this.state.interface,
+    disconnecting: this.connection.isDisconnecting
+  }))
 
   private readonly output = new OutputController(
     () => ({ transport: this.state.interface, rumble: this.rumble, lightbar: this.lightbar }),
@@ -139,6 +149,7 @@ export class DualShock4 extends EventTarget {
   }
 
   private handleConnectionOpened (session: ConnectionSession) {
+    this.audio.attach()
     this.state.interface = DualShock4Interface.Disconnected
     this.output.attach(session.device, session.signal)
     this.firmwareInfo = null
@@ -146,6 +157,7 @@ export class DualShock4 extends EventTarget {
   }
 
   private handleConnectionCleared (device: HIDDevice, reason: DualShock4DisconnectReason, announced: boolean) {
+    this.audio.reset()
     this.firmwareInfoRequest++
     this.output.clear(new DOMException('Controller disconnected.', 'AbortError'))
     this.rumble.reset()
@@ -158,13 +170,14 @@ export class DualShock4 extends EventTarget {
   }
 
   private prepareConnectionClose () {
+    this.audio.reset()
     const previousInterface = this.state.interface
     void this.rumble.setRumbleIntensity(0, 0).catch(() => {})
     this.output.cancelPending(new DOMException('Controller disconnected.', 'AbortError'))
     this.state.interface = DualShock4Interface.Disconnected
     return {
       pending: this.output.drain(),
-      restore: () => { this.state.interface = previousInterface }
+      restore: () => { this.state.interface = previousInterface; this.audio.attach() }
     }
   }
 

@@ -15,6 +15,7 @@
         <label>Weak: </label><input type="range" min="0" max="255" v-model="controller.rumble.light">  ({{controller.rumble.light}})<br>
         <label>Strong: </label><input type="range" min="0" max="255" v-model="controller.rumble.heavy">  ({{controller.rumble.heavy}})
       </div>
+      <HeadphoneControls :headphones="controller.audio.headphones" />
       <div class="buttons">
         <h3>Buttons</h3>
         <div class="btn" v-for="(button, btnKey) in controller.state.buttons" :key="btnKey" :style="{ opacity: button ? 1 : 0.5 }">
@@ -49,11 +50,13 @@
   </div>
 </template>
 <script>
-import { reactive } from 'vue'
+import { markRaw, reactive } from 'vue'
 import { DualShock4 } from '../src'
+import HeadphoneControls from './HeadphoneControls.vue'
 
 export default {
   name: 'ControllerDemo',
+  components: { HeadphoneControls },
   data () {
     return {
       controllers: []
@@ -62,6 +65,7 @@ export default {
   methods: {
     async addController () {
       const rawController = new DualShock4()
+      markRaw(rawController.audio)
       // HID callbacks use the original instance captured in the constructor.
       rawController.state = reactive(rawController.state)
       const controller = reactive(rawController)

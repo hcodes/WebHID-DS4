@@ -1,3 +1,4 @@
+import { SONY_VENDOR_ID, DUALSHOCK4_V2_PRODUCT_ID } from '../../src/consts'
 import type { TestContext } from 'node:test'
 
 export function useHid (t: TestContext, requestDevice: () => Promise<HIDDevice[]>) {
@@ -22,8 +23,8 @@ export function useHid (t: TestContext, requestDevice: () => Promise<HIDDevice[]
 export function createDevice (overrides: Partial<HIDDevice> = {}): HIDDevice {
   return Object.assign(new EventTarget(), {
     opened: false,
-    vendorId: 0x054C,
-    productId: 0x09CC,
+    vendorId: SONY_VENDOR_ID,
+    productId: DUALSHOCK4_V2_PRODUCT_ID,
     productName: 'Wireless Controller',
     collections: [],
     oninputreport: null,

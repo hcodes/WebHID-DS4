@@ -2,6 +2,16 @@
 
 All notable changes made in this fork after the upstream `1.0.5` release are documented in this file.
 
+## 2.2.0
+
+### Added
+
+- Added `controller.audio.headphones` (`DualShock4Headphones`) for passive tri-state support checks, explicit audio output permission/selection, and live MediaStream playback without whole-file buffering.
+- Kept headphone playback inside a `DualShock4Audio` endpoint container, separate from the future built-in mono speaker API.
+- Added cancellation and cleanup for playback, device removal, controller disconnect, superseded output selection, and late microphone permission responses.
+- Added demo headphone controls and a left/right test and documented `Wireless Controller` discovery, browser permissions, DS4 v1 USB restrictions, and the Sony CUH-ZWA1 wireless adapter.
+- Restored the Bluetooth audio restriction for DS4 v1/v2: standard wireless headphone audio needs the Sony CUH-ZWA1 USB receiver; v2 also supports the wired USB audio path.
+
 ## [2.1.0]
 
 ### Added

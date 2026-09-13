@@ -2,29 +2,58 @@
  * @module
  * @internal
  */
+import {
+  SONY_VENDOR_ID,
+  RAZER_VENDOR_ID,
+  NACON_VENDOR_ID,
+  HORI_VENDOR_ID,
+  ARMOR3_LEVEL_UP_VENDOR_ID,
+  SCUF_VENDOR_ID,
+  GAMESTOP_VENDOR_ID,
+  MULTILASER_STEELPLAY_VENDOR_ID,
+  DUALSHOCK4_V1_PRODUCT_ID,
+  DUALSHOCK4_V2_PRODUCT_ID,
+  DUALSHOCK4_WIRELESS_ADAPTER_PRODUCT_ID,
+  STRIKE_PACK_FPS_DOMINATOR_PRODUCT_ID,
+  RAZER_RAIJU_PS4_PRODUCT_ID,
+  RAZER_RAIJU_TOURNAMENT_USB_PRODUCT_ID,
+  RAZER_RAIJU_ULTIMATE_USB_PRODUCT_ID,
+  RAZER_RAIJU_ULTIMATE_BLUETOOTH_PRODUCT_ID,
+  NACON_REVOLUTION_PRO_PRODUCT_ID,
+  NACON_REVOLUTION_PRO_2_PRODUCT_ID,
+  NACON_REVOLUTION_UNLIMITED_PRO_PRODUCT_ID,
+  HORI_MINI_WIRED_GAMEPAD_PRODUCT_ID,
+  HORI_FIGHTING_COMMANDER_PRODUCT_ID,
+  ARMOR3_LEVEL_UP_COBRA_PRODUCT_ID,
+  SCUF_VANTAGE_PRODUCT_ID,
+  GAMESTOP_PS4_FUN_CONTROLLER_PRODUCT_ID,
+  MULTILASER_WARRIOR_JOYPAD_PRODUCT_ID,
+  STEELPLAY_METALTECH_P4_PRODUCT_ID
+} from './consts'
+
 /** Supported controller vendor/product pairs for the WebHID chooser. */
 export const controllerFilters: HIDDeviceFilter[] = [
   // Official Sony controllers and adapter
-  { vendorId: 0x054C, productId: 0x0BA0 }, // Sony — DUALSHOCK 4 USB Wireless Adaptor (CUH-ZWA1)
-  { vendorId: 0x054C, productId: 0x05C4 }, // Sony — DUALSHOCK 4 (CUH-ZCT1)
-  { vendorId: 0x054C, productId: 0x09CC }, // Sony — DUALSHOCK 4 v2 (CUH-ZCT2)
+  { vendorId: SONY_VENDOR_ID, productId: DUALSHOCK4_WIRELESS_ADAPTER_PRODUCT_ID }, // Sony — DUALSHOCK 4 USB Wireless Adaptor (CUH-ZWA1)
+  { vendorId: SONY_VENDOR_ID, productId: DUALSHOCK4_V1_PRODUCT_ID }, // Sony — DUALSHOCK 4 (CUH-ZCT1)
+  { vendorId: SONY_VENDOR_ID, productId: DUALSHOCK4_V2_PRODUCT_ID }, // Sony — DUALSHOCK 4 v2 (CUH-ZCT2)
   // Third-party accessory using Sony's vendor ID
-  { vendorId: 0x054C, productId: 0x05C5 }, // Collective Minds — Strike Pack FPS Dominator (Sony VID)
+  { vendorId: SONY_VENDOR_ID, productId: STRIKE_PACK_FPS_DOMINATOR_PRODUCT_ID }, // Collective Minds — Strike Pack FPS Dominator (Sony VID)
   // Razer Raiju
-  { vendorId: 0x1532, productId: 0x1000 }, // Razer — Raiju PS4
-  { vendorId: 0x1532, productId: 0x1007 }, // Razer — Raiju Tournament Edition (USB)
-  { vendorId: 0x1532, productId: 0x1004 }, // Razer — Raiju Ultimate Edition (USB)
-  { vendorId: 0x1532, productId: 0x1009 }, // Razer — Raiju Ultimate Edition (Bluetooth)
+  { vendorId: RAZER_VENDOR_ID, productId: RAZER_RAIJU_PS4_PRODUCT_ID }, // Razer — Raiju PS4
+  { vendorId: RAZER_VENDOR_ID, productId: RAZER_RAIJU_TOURNAMENT_USB_PRODUCT_ID }, // Razer — Raiju Tournament Edition (USB)
+  { vendorId: RAZER_VENDOR_ID, productId: RAZER_RAIJU_ULTIMATE_USB_PRODUCT_ID }, // Razer — Raiju Ultimate Edition (USB)
+  { vendorId: RAZER_VENDOR_ID, productId: RAZER_RAIJU_ULTIMATE_BLUETOOTH_PRODUCT_ID }, // Razer — Raiju Ultimate Edition (Bluetooth)
   // Nacon Revolution
-  { vendorId: 0x146B, productId: 0x0D01 }, // Nacon — Revolution Pro Controller
-  { vendorId: 0x146B, productId: 0x0D02 }, // Nacon — Revolution Pro Controller 2
-  { vendorId: 0x146B, productId: 0x0D08 }, // Nacon — Revolution Unlimited Pro Controller
+  { vendorId: NACON_VENDOR_ID, productId: NACON_REVOLUTION_PRO_PRODUCT_ID }, // Nacon — Revolution Pro Controller
+  { vendorId: NACON_VENDOR_ID, productId: NACON_REVOLUTION_PRO_2_PRODUCT_ID }, // Nacon — Revolution Pro Controller 2
+  { vendorId: NACON_VENDOR_ID, productId: NACON_REVOLUTION_UNLIMITED_PRO_PRODUCT_ID }, // Nacon — Revolution Unlimited Pro Controller
   // Other third party controllers
-  { vendorId: 0x0F0D, productId: 0x00EE }, // HORI — Mini Wired Gamepad for PS4
-  { vendorId: 0x7545, productId: 0x0104 }, // Armor3 / Level Up — Cobra (shared VID/PID)
-  { vendorId: 0x2E95, productId: 0x7725 }, // SCUF — Vantage
-  { vendorId: 0x11C0, productId: 0x4001 }, // GameStop — PS4 Fun Controller
-  { vendorId: 0x0C12, productId: 0x57AB }, // Multilaser — Warrior Joypad (JS083)
-  { vendorId: 0x0C12, productId: 0x0E16 }, // Steelplay — Metaltech P4
-  { vendorId: 0x0F0D, productId: 0x0084 } // HORI — Fighting Commander
+  { vendorId: HORI_VENDOR_ID, productId: HORI_MINI_WIRED_GAMEPAD_PRODUCT_ID }, // HORI — Mini Wired Gamepad for PS4
+  { vendorId: ARMOR3_LEVEL_UP_VENDOR_ID, productId: ARMOR3_LEVEL_UP_COBRA_PRODUCT_ID }, // Armor3 / Level Up — Cobra (shared VID/PID)
+  { vendorId: SCUF_VENDOR_ID, productId: SCUF_VANTAGE_PRODUCT_ID }, // SCUF — Vantage
+  { vendorId: GAMESTOP_VENDOR_ID, productId: GAMESTOP_PS4_FUN_CONTROLLER_PRODUCT_ID }, // GameStop — PS4 Fun Controller
+  { vendorId: MULTILASER_STEELPLAY_VENDOR_ID, productId: MULTILASER_WARRIOR_JOYPAD_PRODUCT_ID }, // Multilaser — Warrior Joypad (JS083)
+  { vendorId: MULTILASER_STEELPLAY_VENDOR_ID, productId: STEELPLAY_METALTECH_P4_PRODUCT_ID }, // Steelplay — Metaltech P4
+  { vendorId: HORI_VENDOR_ID, productId: HORI_FIGHTING_COMMANDER_PRODUCT_ID } // HORI — Fighting Commander
 ]
