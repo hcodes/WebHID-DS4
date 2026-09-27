@@ -16,6 +16,7 @@
         <label>Strong: </label><input type="range" min="0" max="255" v-model="controller.rumble.heavy">  ({{controller.rumble.heavy}})
       </div>
       <HeadphoneControls :headphones="controller.audio.headphones" />
+      <MicrophoneControls :microphone="controller.audio.microphone" />
       <div class="buttons">
         <h3>Buttons</h3>
         <div class="btn" v-for="(button, btnKey) in controller.state.buttons" :key="btnKey" :style="{ opacity: button ? 1 : 0.5 }">
@@ -53,10 +54,11 @@
 import { markRaw, reactive } from 'vue'
 import { DualShock4 } from '../src'
 import HeadphoneControls from './HeadphoneControls.vue'
+import MicrophoneControls from './MicrophoneControls.vue'
 
 export default {
   name: 'ControllerDemo',
-  components: { HeadphoneControls },
+  components: { HeadphoneControls, MicrophoneControls },
   data () {
     return {
       controllers: []

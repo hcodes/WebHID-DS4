@@ -4,6 +4,7 @@ import {
   DUALSHOCK4_V2_PRODUCT_ID,
   DUALSHOCK4_WIRELESS_ADAPTER_PRODUCT_ID
 } from '../consts'
+import { isControllerAudioLabel } from './isControllerAudioLabel'
 /** How the HID controller is connected; the Sony adapter is a distinct headphone-audio path. */
 export type DualShock4AudioConnection = 'usb' | 'bluetooth' | 'sony-adapter' | 'unknown'
 
@@ -66,9 +67,9 @@ export function isConcreteOutput (device: MediaDeviceInfo): boolean {
   return device.kind === 'audiooutput' && !!device.deviceId && !['default', 'communications'].includes(device.deviceId)
 }
 
-/** Based on the label-discovery approach in nsfm/dualsense-ts/src/audio.ts. @internal */
+/** Uses the same controller-name hints as microphone discovery. @internal */
 export function isControllerOutput (device: MediaDeviceInfo): boolean {
-  return isConcreteOutput(device) && /wireless controller|dualshock|dual shock|cuh-zwa1/i.test(device.label)
+  return isConcreteOutput(device) && isControllerAudioLabel(device.label)
 }
 
 /** @internal */

@@ -31,6 +31,7 @@ control, and rumble over USB and Bluetooth.
 - RGB and HSL lightbar control
 - Light and heavy rumble motors
 - Optional headphone audio: support detection, explicit audio output selection, and live MediaStream playback
+- Optional headset microphone: explicit input selection, live MediaStream capture, and automatic track cleanup
 - Bundled TypeScript declarations
 
 ## Installation
@@ -249,8 +250,10 @@ Only `supported === true` enables playback. A permission failure does not prove
 that the hardware lacks audio support. An empty or incomplete device list stays
 unknown because the browser can hide devices and labels before permission.
 
-The expected name is **Wireless Controller**. Matching is case-insensitive and
-also recognizes DualShock/CUH-ZWA1 labels. DualSense and multiple DS4 controllers
+The expected name is **Wireless Controller**, or **DUALSHOCK®4 USB Wireless Adaptor**
+when using the Sony adapter. Headphones and microphones share the same
+case-insensitive name check, including OS prefixes/suffixes and the adapter name
+without `®` (`DUALSHOCK 4 USB Wireless Adaptor`). DualSense and multiple DS4 controllers
 can have the same name. Browser media devices do not expose USB VID/PID or a
 reliable HID-to-audio mapping, so the user must choose the correct headphone
 output. A custom-labelled output can also be selected explicitly, including one
@@ -339,10 +342,10 @@ inserted, unmuted or audible. Use the demo stereo test for physical confirmation
 | DS4 v2, CUH-ZCT2, USB cable (`054C:09CC`) | USB headphone audio, provided the OS exposes and enables the output |
 | DS4 v1, ordinary Bluetooth | Standard PC connection does not expose headphone audio; the library recommends the Sony adapter |
 | DS4 v2, CUH-ZCT2, Bluetooth (`054C:09CC`) | No headphone audio over standard Bluetooth; use the Sony USB wireless receiver or a USB cable |
-| Sony DUALSHOCK 4 USB Wireless Adaptor, CUH-ZWA1 (`054C:0BA0`) | Wireless headphone audio through the adapter's OS audio output |
+| Sony DUALSHOCK®4 USB Wireless Adaptor, CUH-ZWA1 (`054C:0BA0`) | Wireless headphone audio through the adapter's OS audio output |
 | Third-party controllers, bridges and virtual devices | Unknown until the user selects and verifies an actual output |
 
-The required “stick” for the standard v1 PC path is the **Sony DUALSHOCK 4 USB
+The required “stick” for the standard v1 PC path is the **Sony DUALSHOCK®4 USB
 Wireless Adaptor CUH-ZWA1**, not an ordinary Bluetooth dongle. Its HID ID is
 already recognized by this library. Adapter recognition alone does not prove
 that audio is enabled or that the headphones are attached.
@@ -374,6 +377,100 @@ pages may also need `speaker-selection` and `microphone` Permissions Policy
 allowances from their parent. To verify the hardware, use the demo's left/right
 test and confirm that each tone is audible in the corresponding headphone.
 
+## Headset microphone
+
+`controller.audio.microphone` captures the microphone of a headset plugged into
+the controller's 3.5 mm jack. It uses the OS audio input through
+`getUserMedia()`, independently of WebHID and headphone playback. No microphone
+permission is requested by controller connection or passive support checks.
+
+Use separate UI actions to grant access, select an input and start capture:
+
+```js
+const microphone = controller.audio.microphone
+
+// Passive check: no permission prompt or capture.
+const support = await microphone.checkSupport()
+console.log(support.supported, support.reason, support.inputs)
+
+// In an access button click handler; populate a chooser with the returned inputs.
+const inputs = await microphone.requestInput()
+
+// In the chooser's change handler, using the user's selected concrete deviceId.
+await microphone.setInput(selectedDeviceId)
+
+// In a start button click handler. Handle errors from every async method in your UI.
+const stream = await microphone.start()
+// Use stream with WebRTC, Web Audio, or MediaRecorder as needed.
+
+// Stops the capture tracks and cancels pending work; keeps the selected input.
+microphone.stop()
+// Also clears selection and releases device listeners.
+microphone.reset()
+```
+
+Look for **Wireless Controller** or **DUALSHOCK®4 USB Wireless Adaptor** in the input
+labels (case-insensitive, including OS labels such as `Microphone (Wireless Controller)`
+or `Microphone (DUALSHOCK®4 USB Wireless Adaptor)`). The demo lists only these
+microphone inputs and hides the selector when none are visible.
+Labels are only discovery hints: the browser cannot reliably associate a media
+input with a specific HID controller. Select and test the correct input,
+especially with multiple controllers. `requestInput()` returns all concrete
+audio inputs, including custom-labelled devices; `checkSupport().inputs` lists
+controller label matches plus the selected input. Empty, `default` and
+`communications` IDs are rejected. `start()` uses an exact `deviceId` constraint
+and verifies the returned track's device ID, so it cannot silently fall back to
+the laptop microphone.
+
+- `requestInput()` briefly captures the browser's default microphone to reveal
+  device names and immediately stops every temporary track, including late
+  permission responses after cancellation. It never selects an input or retains
+  the temporary stream. It stops any previous endpoint capture.
+- `setInput()` only selects a visible input; it does not request permission or
+  capture. Changing selection stops previous capture. A failed selection clears
+  the old input. Custom inputs can be selected explicitly to use alternative drivers.
+- `start()` returns a live `MediaStream` with one audio track, replacing previous
+  capture. The library does not record, upload or play it. `microphone.stream`
+  exposes the active stream, or `null` after cleanup. Browser audio processing
+  defaults apply; applications can use the track's `applyConstraints()` if needed.
+- **The microphone endpoint owns the tracks it acquires.** `stop()`, `reset()`,
+  changing inputs and controller disconnection call `track.stop()`, even if that
+  stream is being consumed elsewhere. Stop application-created clones separately.
+  Removal of the selected audio input or an `ended` event also clears capture.
+  Calling `stop()` cancels pending selection, permission and capture requests;
+  the browser permission dialog itself may remain open, but a late stream is stopped.
+- The endpoint emits `change` after selection, capture, stop, reset, permission
+  results and audio device changes. Read `microphone.stream` and call
+  `checkSupport()` again to refresh the UI. If an application directly calls
+  `track.stop()`, which does not emit `ended`, a subsequent support check detects
+  the stopped track; prefer `microphone.stop()` for immediate notification.
+
+Support uses the same `connection` and `requiresAdapter` hardware hints as
+headphones. `supported: true` means the selected input has live capture and is
+still enumerated; it does not prove that the headset is inserted, unmuted or
+producing audible sound. A selected but stopped microphone returns
+`supported: null`, `reason: 'capture-required'`. Other reasons include
+`selection-required`, `permission-or-device-unavailable`, `permission-denied`,
+`input-unavailable`, `enumeration-failed`, `capture-failed`, `insecure-context`,
+`api-unavailable`, `controller-disconnected`, `v1-usb-audio-unavailable` and
+`bluetooth-audio-unavailable`. Permission failures remain unknown rather than
+claiming unsupported hardware.
+
+The standard PC connection requires the OS to expose a headset audio input:
+use USB with DS4 v2, or the Sony DUALSHOCK®4 USB Wireless Adaptor (CUH-ZWA1) with v1/v2. Ordinary
+Bluetooth does not expose the headset audio jack; DS4 v1 does not provide the
+USB Audio Class path. A successfully captured explicit input overrides these
+hardware hints, as with headphone routing. See the hardware sources above and
+the [Media Capture and Streams specification](https://w3c.github.io/mediacapture-main/)
+for device selection and capture behavior.
+
+Microphone capture requires HTTPS/localhost, `getUserMedia()` and
+`enumerateDevices()`; it does **not** require `AudioContext.setSinkId()`. Embedded
+pages may need a `microphone` Permissions Policy allowance. The demo additionally
+uses Web Audio for its level meter: allow access, select the controller input,
+press **Start microphone**, speak into the headset, then press **Stop microphone**.
+The meter does not play your voice back or save a recording.
+
 ## Recognized devices
 
 The device picker currently recognizes these vendor and product IDs:
@@ -382,7 +479,7 @@ The device picker currently recognizes these vendor and product IDs:
 | --- | --- | --- |
 | Sony (`0x054C`) | `0x05C4` | DUALSHOCK 4 (`CUH-ZCT1`) |
 | Sony (`0x054C`) | `0x09CC` | DUALSHOCK 4 v2 (`CUH-ZCT2`) |
-| Sony (`0x054C`) | `0x0BA0` | DUALSHOCK 4 USB Wireless Adaptor (`CUH-ZWA1`) |
+| Sony (`0x054C`) | `0x0BA0` | DUALSHOCK®4 USB Wireless Adaptor (`CUH-ZWA1`) |
 | Sony VID (`0x054C`) | `0x05C5` | Strike Pack FPS Dominator (no CUH model) |
 | Razer (`0x1532`) | `0x1000`, `0x1007`, `0x1004`, `0x1009` | Raiju family |
 | Nacon (`0x146B`) | `0x0D01`, `0x0D02`, `0x0D08` | Revolution family |

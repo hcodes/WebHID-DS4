@@ -61,7 +61,7 @@ export class DualShock4 extends EventTarget {
   /** Allows rumble control */
   rumble = new DualShock4Rumble(() => this.requestOutputUpdate())
 
-  /** Optional browser audio output selection, support detection and headphone playback. */
+  /** Optional browser headphone playback and headset microphone capture with explicit device selection. */
   readonly audio = new DualShock4Audio(() => ({
     device: this.device,
     transport: this.state.interface,

@@ -1,6 +1,8 @@
 export { DualShock4 } from './DualShock4'
 export { DualShock4Audio } from './audio/DualShock4Audio'
 export { DualShock4Headphones } from './audio/DualShock4Headphones'
+export { DualShock4Microphone } from './audio/DualShock4Microphone'
+export type { DualShock4MicrophoneSupport, DualShock4MicrophoneSupportReason } from './audio/microphoneSupport'
 export type { DualShock4HeadphonesSupport, DualShock4HeadphonesSupportReason, DualShock4AudioConnection } from './audio/headphoneSupport'
 export type { DualShock4EventMap, DualShock4DisconnectReason } from './events'
 export type { BatteryStatus } from './state'

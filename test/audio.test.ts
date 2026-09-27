@@ -44,6 +44,20 @@ test('passive detection never requests permission or treats a label match as ver
   assert.equal(TestAudioContext.instances.length, 0)
 })
 
+test('Sony adapter headphone outputs are discovered by their OS labels', async t => {
+  const { controller, environment } = await setup(t, DUALSHOCK4_WIRELESS_ADAPTER_PRODUCT_ID)
+  environment.setDevices([
+    mediaDevice('adapter', 'DUALSHOCK®4 USB Wireless Adaptor'),
+    mediaDevice('adapter-2', 'Speakers (dualshock®4 usb wireless adaptor)'),
+    mediaDevice('adapter-input', 'DUALSHOCK®4 USB Wireless Adaptor', 'audioinput'),
+    mediaDevice('default', 'DUALSHOCK®4 USB Wireless Adaptor'),
+    mediaDevice('laptop', 'Built-in Speakers')
+  ])
+  const support = await controller.audio.headphones.checkSupport()
+  assert.deepEqual(support.outputs.map(device => device.deviceId), ['adapter', 'adapter-2'])
+  assert.equal(support.connection, 'sony-adapter')
+})
+
 test('hidden or absent outputs mean unknown, not unsupported hardware', async t => {
   const { controller, environment } = await setup(t)
   assert.ok(controller.audio)

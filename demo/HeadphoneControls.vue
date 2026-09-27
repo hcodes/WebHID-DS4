@@ -3,11 +3,12 @@
     <h4>Headphone audio</h4>
     <p role="status">{{ supportMessage }}</p>
     <p v-if="support?.requiresAdapter">
-      Use the Sony DUALSHOCK 4 USB Wireless Adaptor (CUH-ZWA1) for wireless headphone audio on PC.
+      Use the Sony DUALSHOCK®4 USB Wireless Adaptor (CUH-ZWA1) for wireless headphone audio on PC.
       An ordinary Bluetooth dongle does not replace this receiver. DualShock 4 v2 also supports wired USB audio.
     </p>
     <p>
-      Plug headphones into the controller and look for <b>Wireless Controller</b>.
+      Plug headphones into the controller and look for <b>Wireless Controller</b>
+      or <b>DUALSHOCK®4 USB Wireless Adaptor</b>.
       If several controllers share this name, select an output and use the left/right test to identify it.
     </p>
     <button type="button" :disabled="busy || unavailable" @click="requestOutput">Allow audio output access</button>
@@ -30,7 +31,7 @@
     </template>
     <p v-else-if="support && !unavailable" role="status">
       DualShock audio output not found. Allow audio output access and check the connection:
-      use a USB cable for DualShock 4 v2 or the Sony CUH-ZWA1 USB wireless receiver.
+      use a USB cable for DualShock 4 v2 or the Sony DUALSHOCK®4 USB Wireless Adaptor (CUH-ZWA1).
     </p>
     <div class="audio-actions">
       <button type="button" :disabled="busy || !ready" @click="testHeadphones">Test left, then right</button>
@@ -56,7 +57,7 @@ const messages = {
   'insecure-context': 'Audio output selection requires HTTPS or localhost.',
   'api-unavailable': 'This browser does not support the required audio output APIs.',
   'v1-usb-audio-unavailable': 'DualShock 4 v1 does not expose headphone audio over a USB cable.',
-  'bluetooth-audio-unavailable': 'Standard Bluetooth does not expose headphone audio on DualShock 4 v1 or v2. Use the Sony CUH-ZWA1 USB wireless receiver, or a USB cable for v2.',
+  'bluetooth-audio-unavailable': 'Standard Bluetooth does not expose headphone audio on DualShock 4 v1 or v2. Use the Sony DUALSHOCK®4 USB Wireless Adaptor (CUH-ZWA1), or a USB cable for v2.',
   'selection-required': 'A possible controller output was found. Select it to verify routing.',
   'permission-or-device-unavailable': 'No controller output is visible yet. Allow access and check the connection.',
   'permission-denied': 'Audio device access was denied or blocked. Check this site’s browser permissions.',

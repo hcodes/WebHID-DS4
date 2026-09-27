@@ -6,6 +6,10 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 ### Added
 
+- Added `controller.audio.microphone` (`DualShock4Microphone`) for headset input discovery, explicit selection and live `MediaStream` capture, with owned-track cleanup on stop, input removal, controller disconnect and cancelled permission requests.
+- Added demo microphone controls with explicit capture start/stop and a live input level meter, without recording or voice playback.
+- Filtered the demo microphone chooser to concrete audio inputs labelled `Wireless Controller` or `DUALSHOCK®4 USB Wireless Adaptor`, including case-insensitive OS label variants. Documented the adapter label for both microphones and headphones.
+- Unified microphone and headphone name discovery in one explicit label check, also accepting the adapter name without `®`; generic DualShock/CUH-ZWA1 labels no longer appear as automatic candidates.
 - Added `controller.audio.headphones` (`DualShock4Headphones`) for passive tri-state support checks, explicit audio output permission/selection, and live MediaStream playback without whole-file buffering.
 - Kept headphone playback inside a `DualShock4Audio` endpoint container, separate from the future built-in mono speaker API.
 - Added cancellation and cleanup for playback, device removal, controller disconnect, superseded output selection, and late microphone permission responses.
