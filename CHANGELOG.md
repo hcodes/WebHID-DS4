@@ -6,10 +6,14 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 ### Fixed
 
-- Fixed genuine Bluetooth controllers being reported as clones: skip the USB-only `0x81` check when the HID descriptor identifies Bluetooth and return `isClone: null` (unknown), including when firmware metadata is unavailable.
+- Fixed genuine Bluetooth controllers being reported as clones because the USB-only `0x81` probe is unavailable. Missing firmware metadata or communication failures no longer count as clone evidence.
 
 ### Added
 
+- Replaced the USB-only clone heuristic with a shared USB/Bluetooth `0xF0/0xF2/0xF1` authentication exchange and RSA-PSS/SHA-256 verification of the Sony certificate and random challenge. `isClone` is `false` for valid signatures, `true` for invalid signatures, and `null` for unavailable checks or communication failures. Authentication has a 30-second deadline, shares concurrent checks, and cancels on device loss.
+- Moved authentication into the background so it does not delay `connect()` or `readFirmwareInfo()`. Added the `clonecheck` completion event, reset `isClone` to `null` while checking, and cancel pending checks on manual disconnect or device replacement without publishing stale results.
+- Added the read-only `isCloneChecking` getter to distinguish pending authentication from an unknown `isClone` result. It resets on completion or cancellation and is already false in `clonecheck` listeners.
+- Added typed headphone, microphone and EXT device connection/disconnection events from USB/Bluetooth hardware flags. The first full report announces attached accessories with `initial: true`; later changes use `initial: false`. Repeated/basic/corrupt reports produce no duplicate events, and controller disconnect/replacement reset the flags without accessory disconnect events.
 - Added hardware lightbar blinking over USB/Bluetooth via `lightbar.setBlink(onMs, offMs)` and `stopBlink()`, with cached `blinkOn`/`blinkOff` getters and millisecond durations quantized to 10 ms in the shared output queue.
 - Added `touchpad.frames` as a snapshot of the latest full input report (up to three USB or four Bluetooth frames, including frames without active contacts), and `touchpad.frameCounter` as its last frame's raw 8-bit counter. Each full report replaces the snapshot; basic Bluetooth reports preserve it and disconnect resets it. Existing `touchpad.touches` still exposes the last frame's active contacts.
 - Added `cableConnected`, `externalDeviceConnected`, `headphonesConnected` and `microphoneConnected` controller state flags from full USB/Bluetooth input reports, with disconnect reset and preservation across basic Bluetooth reports.

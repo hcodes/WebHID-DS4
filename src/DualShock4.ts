@@ -1,4 +1,5 @@
 import { readControllerFirmware } from './firmware/readFirmwareInfo'
+import { authenticateController } from './authentication/authenticate'
 import { DualShock4Audio } from './audio/DualShock4Audio'
 import { ConnectionController, type ConnectionSession } from './controllers/ConnectionController'
 import type { DualShock4EventMap, DualShock4DisconnectReason } from './events'
@@ -8,7 +9,13 @@ import DualShock4Lightbar from './effects/DualShock4Lightbar'
 import DualShock4Rumble from './effects/DualShock4Rumble'
 import type { DualShock4FirmwareInfo } from './firmware/parseFirmwareInfo'
 import { OutputController } from './controllers/OutputController'
-import { detectInputInterface, getInputStateData, normalizeInputReport, isValidBluetoothInputReport, updateControllerState } from './protocol/input'
+import { detectInputInterface, getInputStateData, normalizeInputReport, isValidBluetoothInputReport, isMinimalBluetoothReport, updateControllerState } from './protocol/input'
+
+const accessoryEvents = [
+  ['headphonesConnected', 'headphonesconnect', 'headphonesdisconnect'],
+  ['microphoneConnected', 'microphoneconnect', 'microphonedisconnect'],
+  ['externalDeviceConnected', 'externaldeviceconnect', 'externaldevicedisconnect']
+] as const
 
 /**
  * Main class.
@@ -27,12 +34,17 @@ export class DualShock4 extends EventTarget {
   }
 
   private firmwareInfoRequest = 0
+  private inputReportSequence = 0
+  private accessoryStateKnown = false
+  private cloneCheck?: { device: HIDDevice, session?: ConnectionSession, abort: AbortController }
 
   /** Internal WebHID device */
   get device (): HIDDevice | undefined { return this.connection.device }
   set device (device: HIDDevice | undefined) {
     if (device === this.device) return
+    this.cancelCloneCheck()
     this.connection.device = device
+    this.clearAccessoryConnections()
     if (device?.opened) this.audio.attach()
     else this.audio.reset()
     if (device) this.output.attach(device, this.connection.session?.signal)
@@ -48,11 +60,22 @@ export class DualShock4 extends EventTarget {
   firmwareInfo: DualShock4FirmwareInfo | null = null
 
   /**
-   * Result of the USB feature-report clone check, or `null` before it runs
-   * and on Bluetooth, where the USB-only check is unavailable.
-   * This is a compatibility heuristic, not proof of authenticity.
+   * Sony certificate and random-challenge signature check over USB or Bluetooth.
+   * `false` means both signatures verified, `true` means a signature failed.
+   * `null` means unknown (pending, unsupported, I/O failure or timeout).
+   * Background completion emits `clonecheck` after this field is updated.
+   * Copied authentic controller keys cannot be distinguished by this check.
    */
   isClone: boolean | null = null
+
+  /**
+   * Whether background authentication is running for the current controller.
+   * False before starting, after completion (including an unknown result),
+   * and immediately after cancellation. Already false in `clonecheck` listeners.
+   */
+  get isCloneChecking (): boolean {
+    return Boolean(this.cloneCheck && !this.cloneCheck.abort.signal.aborted)
+  }
 
   /** Current controller state */
   state = createDefaultState()
@@ -103,6 +126,8 @@ export class DualShock4 extends EventTarget {
    *
    * This function must be called in the context of user interaction
    * (i.e in a click event handler), otherwise it might not work.
+   * Firmware reading is bounded by one second; authentication runs in the
+   * background and does not delay connection or the `connect` event.
    *
    * @returns `true` when the controller is connected, or `false` when device selection is cancelled.
    */
@@ -111,14 +136,17 @@ export class DualShock4 extends EventTarget {
   }
 
   /**
-   * Reads DualShock 4 feature report 0xA3 and updates {@link firmwareInfo} and
-   * {@link isClone}.
+   * Reads DualShock 4 feature report 0xA3, updates {@link firmwareInfo}, and
+   * starts background authentication without waiting for its result.
    *
    * Both USB and Bluetooth controllers use this report. The firmware request
-   * times out after one second; the optional follow-up USB clone check uses
-   * a 250 ms timeout. On Bluetooth, {@link isClone} stays `null` because the
-   * check is unavailable. Unsupported, timed out, or malformed firmware reports
-   * return `null` so compatible third-party controllers can still be used.
+   * times out after one second. A separate authentication exchange using
+   * 0xF0/0xF2/0xF1 verifies the Sony certificate and challenge signature, with
+   * a total 30-second deadline. Concurrent checks share one exchange. While
+   * pending, {@link isCloneChecking} is `true` and {@link isClone} is `null`; completion updates it and emits
+   * `clonecheck`. Subscribe before connecting or refreshing to observe results.
+   * Unsupported, timed out, or malformed firmware reports return `null`;
+   * authentication failures do not prevent compatible controllers connecting.
    */
   async readFirmwareInfo (): Promise<DualShock4FirmwareInfo | null> {
     const device = this.device
@@ -131,15 +159,44 @@ export class DualShock4 extends EventTarget {
 
     const request = ++this.firmwareInfoRequest
     const session = this.connection.session
-    const result = await readControllerFirmware(device, session?.signal)
+    const firmwareInfo = await readControllerFirmware(device, session?.signal)
     if (
       request === this.firmwareInfoRequest && this.connection.session === session &&
-      !session?.signal.aborted && (!result.firmwareInfo || device.opened)
+      !session?.signal.aborted && device.opened && !this.connection.isDisconnecting
     ) {
-      this.firmwareInfo = result.firmwareInfo
-      this.isClone = result.isClone
+      this.firmwareInfo = firmwareInfo
+      this.startCloneCheck(device, session)
     }
-    return result.firmwareInfo
+    return firmwareInfo
+  }
+
+  private startCloneCheck (device: HIDDevice, session?: ConnectionSession) {
+    if (this.cloneCheck?.device === device && this.cloneCheck.session === session) return
+    this.cancelCloneCheck()
+    const check = { device, session, abort: new AbortController() }
+    this.cloneCheck = check
+    const cancel = () => check.abort.abort(session?.signal.reason)
+    session?.signal.addEventListener('abort', cancel, { once: true })
+    if (session?.signal.aborted) cancel()
+    const complete = (isClone: boolean | null) => {
+      session?.signal.removeEventListener('abort', cancel)
+      if (this.cloneCheck !== check) return
+      this.cloneCheck = undefined
+      if (
+        this.connection.session !== session || this.device !== device ||
+        check.abort.signal.aborted || !device.opened || this.connection.isDisconnecting
+      ) return
+      this.isClone = isClone
+      this.emit('clonecheck', { device, isClone })
+    }
+    void authenticateController(device, check.abort.signal).then(complete, () => complete(null))
+  }
+
+  private cancelCloneCheck () {
+    const check = this.cloneCheck
+    this.cloneCheck = undefined
+    check?.abort.abort(new DOMException('Controller authentication cancelled.', 'AbortError'))
+    this.isClone = null
   }
 
   /**
@@ -159,6 +216,8 @@ export class DualShock4 extends EventTarget {
   }
 
   private handleConnectionOpened (session: ConnectionSession) {
+    this.cancelCloneCheck()
+    this.clearAccessoryConnections()
     this.audio.attach()
     this.state.interface = DualShock4Interface.Disconnected
     this.output.attach(session.device, session.signal)
@@ -167,6 +226,7 @@ export class DualShock4 extends EventTarget {
   }
 
   private handleConnectionCleared (device: HIDDevice, reason: DualShock4DisconnectReason, announced: boolean) {
+    this.cancelCloneCheck()
     this.audio.reset()
     this.firmwareInfoRequest++
     this.output.clear(new DOMException('Controller disconnected.', 'AbortError'))
@@ -176,10 +236,12 @@ export class DualShock4 extends EventTarget {
     this.firmwareInfo = null
     this.isClone = null
     this.state = createDefaultState()
+    this.accessoryStateKnown = false
     if (announced) this.emit('disconnect', { device, reason })
   }
 
   private prepareConnectionClose () {
+    this.cancelCloneCheck()
     this.audio.reset()
     const previousInterface = this.state.interface
     void this.rumble.setRumbleIntensity(0, 0).catch(() => {})
@@ -189,6 +251,11 @@ export class DualShock4 extends EventTarget {
       pending: this.output.drain(),
       restore: () => { this.state.interface = previousInterface; this.audio.attach() }
     }
+  }
+
+  private clearAccessoryConnections () {
+    this.accessoryStateKnown = false
+    for (const [key] of accessoryEvents) this.state[key] = false
   }
 
   /** Routes validated input into state updates and transport initialization. */
@@ -209,8 +276,25 @@ export class DualShock4 extends EventTarget {
 
     const stateData = getInputStateData(report.reportId, data, this.state.interface)
     if (!stateData) return
+    const session = this.connection.session
+    const sequence = ++this.inputReportSequence
+    const previous = accessoryEvents.map(([key]) => this.state[key])
     this.state.timestamp = report.timeStamp
     updateControllerState(this.state, stateData)
+    if (isMinimalBluetoothReport(report.reportId, data)) return
+    const initial = !this.accessoryStateKnown
+    this.accessoryStateKnown = true
+    const current = accessoryEvents.map(([key]) => this.state[key])
+    for (const [index, [, connected, disconnected]] of accessoryEvents.entries()) {
+      if (initial ? !current[index] : previous[index] === current[index]) continue
+      // A listener may replace/disconnect the session or process a newer report.
+      if (
+        this.connection.session !== session || this.device !== report.device ||
+        session?.signal.aborted || this.connection.isDisconnecting ||
+        !report.device.opened || this.inputReportSequence !== sequence
+      ) return
+      this.emit(current[index] ? connected : disconnected, { device: report.device, initial })
+    }
   }
 
   private initializeTransport (transport: ControllerTransport) {

@@ -104,6 +104,9 @@ After a successful connection, `firmwareInfo` contains metadata read from the
 controller's feature report `0xA3`:
 
 ```js
+controller.addEventListener('clonecheck', ({ detail }) => {
+  console.log('Authentication result:', detail.isClone) // false / true / null
+})
 if (await controller.connect()) {
   console.log(controller.firmwareInfo)
   // {
@@ -115,24 +118,60 @@ if (await controller.connect()) {
   //   firmwareVersion: 0x0100,
   //   firmwareVersionHex: '0x0100'
   // }
-  console.log(controller.isClone) // USB: false when the check passes; Bluetooth: null
+  console.log(controller.isClone) // Usually null while authentication is pending.
 }
 ```
 
 The same firmware report is supported over USB and Bluetooth and times out after
-one second. The optional USB clone check uses a 250 ms timeout, so compatible
-controllers that do not implement these reports cannot block `connect()`. Call
+one second. Authentication runs in the background, independently of the firmware
+result, with a total 30-second deadline. `connect()` and the `connect` event do not
+wait for authentication; firmware reading adds at most one second. Call
 `await controller.readFirmwareInfo()` to refresh it. The method returns the
 updated object, or `null` when a third-party controller does not implement the
 report or returns malformed data. Reading firmware information therefore does
 not prevent an otherwise compatible controller from connecting.
 
-`isClone` is a USB compatibility heuristic: `false` means valid firmware metadata
-and a successful feature-report `0x81` probe; `true` means one of these checks
-failed. It is `null` before the check, after disconnect, and on Bluetooth, where
-the USB-only `0x81` probe is unavailable. A Bluetooth connection or firmware-read
-failure over Bluetooth must not be treated as evidence that the controller is
-a replica. Handle `null` as "unknown" in your UI.
+The authentication deadline is based on the approximately 30-second Bluetooth
+exchange captured in the [protocol description](https://www.psdevwiki.com/ps4/DS4-BT#HID_features_reports).
+This is an application timeout, not a protocol-mandated minimum duration; a
+successful check completes as soon as the response is verified.
+
+`isClone` uses the same cryptographic check on USB and Bluetooth: a fresh random
+256-byte challenge is sent through feature report `0xF0`, `0xF2` is polled for
+readiness, and the response is read through `0xF1`. Web Crypto verifies both the
+controller's certificate against the pinned Sony Jedi CA and its RSA-PSS/SHA-256
+signature of the challenge. `false` means both signatures verified; `true`
+means a signature failed. `null` means unknown: before checking, after disconnect,
+when authentication reports or Web Crypto are unavailable, or on communication,
+packet-integrity or timeout errors. Handle `null` as "unknown" in your UI.
+
+The check starts automatically during `connect()` and `readFirmwareInfo()`;
+neither method waits for it. `isClone` is reset to `null` while checking, then
+updated before a `clonecheck` event with `{ device, isClone }` is emitted.
+The read-only `isCloneChecking` getter is `true` while authentication is running,
+and `false` before it starts, after completion (including an unknown result),
+or immediately after cancellation. It is already `false` inside `clonecheck`
+listeners. Use it to distinguish a pending check from an unknown result:
+
+```js
+function authenticityStatus () {
+  if (controller.isCloneChecking) return 'Checking…'
+  if (controller.isClone === null) return 'Unknown'
+  return controller.isClone ? 'Signature verification failed' : 'Signatures verified'
+}
+
+controller.addEventListener('clonecheck', () => console.log(authenticityStatus()))
+await controller.connect()
+console.log(authenticityStatus())
+```
+
+Subscribe before connecting or refreshing so fast results are not missed.
+Concurrent refreshes share an authentication exchange. Manual disconnect,
+device loss and device replacement cancel it; stale completions emit no event
+and cannot update the current controller.
+An invalid signature does not prevent connecting or using the controller.
+This verifies possession of Sony-certified keys: a replica using copied genuine
+keys can pass. Key revocation checking is not implemented.
 
 Hardware and firmware versions are raw 16-bit values supplied by the
 controller. The hexadecimal properties preserve the four-digit notation used
@@ -247,8 +286,8 @@ instance can be connected again later.
 
 ### Connection events
 
-Each `DualShock4` instance is an `EventTarget` with typed `connect` and
-`disconnect` events. Subscribe before calling `connect()`:
+Each `DualShock4` instance is an `EventTarget` with typed `connect`,
+`disconnect` and `clonecheck` events. Subscribe before calling `connect()`:
 
 ```ts
 controller.addEventListener('connect', ({ detail }) => {
@@ -264,7 +303,10 @@ controller.addEventListener('disconnect', ({ detail }) => {
 
 - `connect` fires once after the session opens and firmware detection finishes,
   including when firmware information is unavailable. It does not wait for the
-  first input report to identify USB or Bluetooth.
+  first input report to identify USB or Bluetooth, or for background authentication.
+- `clonecheck` reports background authentication completion with `{ device, isClone }`.
+  The field is already updated when listeners run. Cancelled or stale checks
+  emit no completion event.
 - `disconnect` fires once when an established session ends through `disconnect()`
   (`manual`) or WebHID reports device loss (`device-lost`). The event retains the
   previous `HIDDevice` in `detail.device`, while `controller.device` is cleared.
@@ -279,6 +321,50 @@ controller.addEventListener('disconnect', ({ detail }) => {
 Use `removeEventListener()`, `{ once: true }`, or `{ signal }` to manage
 subscriptions. Reconnection remains explicit via `connect()`; native WebHID
 `connect` events do not automatically open a controller session.
+
+### Hardware accessory events
+
+Subscribe on the controller to detect hardware connected to its jack or EXT port:
+
+| Accessory | Connected event | Disconnected event |
+| --- | --- | --- |
+| Headphones | `headphonesconnect` | `headphonesdisconnect` |
+| Microphone | `microphoneconnect` | `microphonedisconnect` |
+| EXT device | `externaldeviceconnect` | `externaldevicedisconnect` |
+
+Each event has `detail: { device, initial }`, where `device` is the controller's
+`HIDDevice`. The first valid full input report emits a connected event for each
+accessory already attached, with `initial: true`. Absent accessories produce no
+initial disconnected event. Subsequent flag changes emit the matching event
+with `initial: false`; unchanged reports produce no duplicates. All controller
+state fields are updated before listeners run.
+
+```js
+const events = [
+  'headphonesconnect', 'headphonesdisconnect',
+  'microphoneconnect', 'microphonedisconnect',
+  'externaldeviceconnect', 'externaldevicedisconnect'
+]
+for (const name of events) {
+  controller.addEventListener(name, ({ detail }) => {
+    console.log(name, detail.device.productName, { initial: detail.initial })
+  })
+}
+await controller.connect()
+```
+
+Subscribe before `connect()` to observe initial detection; full input reports
+can arrive while firmware initialization is still running. Late subscribers do
+not receive past events and should read `controller.state.headphonesConnected`,
+`microphoneConnected` and `externalDeviceConnected` for the current snapshot.
+Before the first full report, these flags retain their default `false` values.
+
+Manual disconnect, controller loss and replacement reset the flags without
+accessory disconnected events. Reconnection begins a fresh initial detection.
+Basic Bluetooth input reports have no accessory status; they preserve the flags
+and emit no accessory events. Corrupt or stale reports are ignored. These events
+describe the controller's hardware flags, independently of OS audio discovery,
+headphone playback or microphone capture.
 
 
 ## Hardware audio volume
@@ -631,8 +717,8 @@ welcome.
   and hardware revision.
 - `firmwareInfo` can identify the raw version and known board model reported by
   a controller, but it cannot determine whether that version is a latest Sony
-  release. `isClone` is based on feature-report compatibility and is not
-  cryptographic proof that a controller is genuine.
+  release. `isClone` verifies Sony-certified keys; it cannot identify replicas
+  using copied genuine keys or check whether a key has been revoked.
 
 ## Development
 
