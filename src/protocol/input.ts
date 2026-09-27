@@ -2,7 +2,7 @@
  * @module
  * @internal
  */
-import { DualShock4Interface, type DualShock4State, type ControllerTransport } from '../state'
+import { DualShock4Interface, type DualShock4State, type DualShock4TouchpadFrame, type ControllerTransport } from '../state'
 import { bluetoothInputReportId } from './consts'
 import { crc32 } from '../utils/crc32'
 import { normalizeThumbstick, normalizeTrigger } from './normalize'
@@ -76,7 +76,7 @@ export function updateControllerState (state: DualShock4State, data: DataView) {
   // Basic Bluetooth input contains buttons/sticks/triggers, but no sensors.
   if (data.byteLength === minimalBluetoothInputReportLength) return
   updateBattery(state, data)
-  updateAudioConnections(state, data)
+  updateAccessoryConnections(state, data)
   updateMotion(state, data)
   updateTouchpad(state, data)
 }
@@ -139,10 +139,11 @@ function updateBattery (state: DualShock4State, data: DataView) {
   }
 }
 
-function updateAudioConnections (state: DualShock4State, data: DataView) {
+function updateAccessoryConnections (state: DualShock4State, data: DataView) {
   const status = data.getUint8(29)
   state.headphonesConnected = Boolean(status & 0x20)
   state.microphoneConnected = Boolean(status & 0x40)
+  state.externalDeviceConnected = Boolean(status & 0x80)
 }
 
 function updateMotion (state: DualShock4State, data: DataView) {
@@ -158,7 +159,7 @@ function updateMotion (state: DualShock4State, data: DataView) {
 
 function updateTouchpad (state: DualShock4State, data: DataView) {
   // Update touchpad
-  state.touchpad.touches = []
+  const frames: DualShock4TouchpadFrame[] = []
   const touchReportSize = 9
   const firstTouchReportOffset = 33
   const maxTouchReports = Math.floor((data.byteLength - firstTouchReportOffset) / touchReportSize)
@@ -181,6 +182,12 @@ function updateTouchpad (state: DualShock4State, data: DataView) {
       }
     }
 
-    state.touchpad.touches = touches
+    frames.push({ frameCounter: data.getUint8(reportOffset), touches })
   }
+
+  const newestFrame = frames[frames.length - 1]
+  state.touchpad.frames = frames
+  state.touchpad.frameCounter = newestFrame?.frameCounter ?? null
+  // Keep current contacts independently mutable from the recorded frame snapshot.
+  state.touchpad.touches = newestFrame?.touches.map(touch => ({ ...touch })) ?? []
 }

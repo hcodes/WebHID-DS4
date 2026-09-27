@@ -7,7 +7,7 @@ import { crc32 } from '../utils/crc32'
 
 export interface OutputState {
   rumble: { light: number, heavy: number }
-  lightbar: { r: number, g: number, b: number }
+  lightbar: { r: number, g: number, b: number, blinkOn?: number | null, blinkOff?: number | null }
   audio?: {
     headphonesLeft: number | null
     headphonesRight: number | null
@@ -45,6 +45,7 @@ export function buildOutputReport (transport: ControllerTransport, state: Output
     // Lightbar Blue
     report[8] = state.lightbar.b
 
+    writeLightbarBlink(report, 1, 9, state.lightbar)
     writeAudioVolumes(report, 1, 19, state.audio)
 
     return { reportId: report[0], data: report.slice(1), raw: report.buffer }
@@ -73,12 +74,21 @@ export function buildOutputReport (transport: ControllerTransport, state: Output
     // Lightbar Blue
     report[11] = state.lightbar.b
 
+    writeLightbarBlink(report, 4, 12, state.lightbar)
     writeAudioVolumes(report, 4, 22, state.audio)
 
     new DataView(report.buffer).setUint32(75, crc32(report.subarray(0, 75)), true)
 
     return { reportId: report[1], data: report.slice(2), raw: report.buffer }
   }
+}
+
+/** Configure blinking only after an explicit request, including zero timings to stop it. */
+function writeLightbarBlink (report: Uint8Array, flagsOffset: number, timingOffset: number, lightbar: OutputState['lightbar']) {
+  if (lightbar.blinkOn == null || lightbar.blinkOff == null) return
+  report[flagsOffset] |= 0x04
+  report[timingOffset] = lightbar.blinkOn / 10
+  report[timingOffset + 1] = lightbar.blinkOff / 10
 }
 
 /** Set only explicitly configured audio levels, leaving other channels unchanged. */

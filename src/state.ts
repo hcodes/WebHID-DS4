@@ -14,6 +14,8 @@ export interface DualShock4State {
 
   /** Whether the controller reports a cable connected, independently of the HID transport. */
   cableConnected : boolean
+  /** Raw controller flag indicating a device connected to the EXT accessory port. */
+  externalDeviceConnected : boolean
   /** Whether the controller reports headphones connected to its 3.5 mm jack. */
   headphonesConnected : boolean
   /** Whether the controller reports a microphone connected to its 3.5 mm jack. */
@@ -130,7 +132,19 @@ export interface DualShock4AnalogState {
 
 /** Touchpad State */
 export interface DualShock4Touchpad {
-  /** Current touches */
+  /** Active contacts from the last frame in the most recent full input report. */
+  touches : DualShock4TouchpadTouch[]
+  /** Complete frames from the most recent full report, in reported order; not accumulated history. */
+  frames : DualShock4TouchpadFrame[]
+  /** Last frame's raw 8-bit counter (0-255), or null when no frames are available. */
+  frameCounter : number | null
+}
+
+/** One reported touchpad frame, including frames with no active contacts. */
+export interface DualShock4TouchpadFrame {
+  /** Raw 8-bit frame counter; wraps from 255 to 0. */
+  frameCounter : number
+  /** Active contacts in this frame. */
   touches : DualShock4TouchpadTouch[]
 }
 
@@ -169,6 +183,7 @@ export function createDefaultState () : DualShock4State {
     batteryCapacity: null,
     batteryStatus: 'unknown',
     cableConnected: false,
+    externalDeviceConnected: false,
     headphonesConnected: false,
     microphoneConnected: false,
 
@@ -216,7 +231,9 @@ export function createDefaultState () : DualShock4State {
     },
 
     touchpad: {
-      touches: []
+      touches: [],
+      frames: [],
+      frameCounter: null
     },
 
     sensorTimestamp: null,

@@ -14,6 +14,30 @@ export default class DualShock4Lightbar {
   private greenIntensity = 0
   /** @ignore */
   private blueIntensity = 0
+  private blinkOnDuration: number | null = null
+  private blinkOffDuration: number | null = null
+
+  /** Last requested bright interval in milliseconds, or null before blink configuration. */
+  get blinkOn (): number | null { return this.blinkOnDuration }
+
+  /** Last requested dark interval in milliseconds, or null before blink configuration. */
+  get blinkOff (): number | null { return this.blinkOffDuration }
+
+  /** Configure controller-driven blinking without JavaScript timers.
+   * Finite durations are clamped to 0-2550 ms and rounded down to 10 ms units.
+   * Off defaults to on. Use stopBlink() for steady illumination.
+   * Resolves when the HID report is sent; rejects on failure or disconnect.
+   */
+  async setBlink (onMs: number, offMs = onMs): Promise<void> {
+    const on = normalizeBlinkDuration(onMs)
+    const off = normalizeBlinkDuration(offMs)
+    this.blinkOnDuration = on
+    this.blinkOffDuration = off
+    return this.updateLightbar()
+  }
+
+  /** Disable hardware blinking while preserving the RGB color. */
+  stopBlink (): Promise<void> { return this.setBlink(0, 0) }
 
   /**
    * Send Lightbar data to the controller.
@@ -76,4 +100,9 @@ export default class DualShock4Lightbar {
     const color = hslToRgb(h, s, l)
     return this.setColorRGB(color.r, color.g, color.b)
   }
+}
+
+function normalizeBlinkDuration (value: number): number {
+  if (!Number.isFinite(value)) throw new RangeError('Blink duration must be a finite number.')
+  return Math.floor(Math.min(2550, Math.max(0, value)) / 10) * 10
 }

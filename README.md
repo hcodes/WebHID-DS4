@@ -25,10 +25,10 @@ control, and rumble over USB and Bluetooth.
 - USB and Bluetooth input
 - Buttons, D-pad, and normalized analog sticks and triggers
 - Raw signed gyroscope and accelerometer data
-- Up to two simultaneous touchpad contacts
+- Up to two simultaneous touchpad contacts, with all frames and counters from the latest input report
 - Battery capacity and charging status
 - Firmware build, raw hardware/firmware versions, known board model, and clone check
-- RGB and HSL lightbar control
+- RGB and HSL lightbar control and hardware blinking
 - Light and heavy rumble motors
 - Optional headphone audio: support detection, explicit audio output selection, and live MediaStream playback
 - Optional headset microphone: explicit input selection, live MediaStream capture, and automatic track cleanup
@@ -142,28 +142,52 @@ input report. Its main properties are:
 | `batteryCapacity` | Estimated capacity from 0 to 100, or `null` when unavailable |
 | `batteryStatus` | `discharging`, `charging`, `full`, `error`, or `unknown` |
 | `cableConnected` | Whether the controller reports a cable connected, independently of USB/Bluetooth transport |
+| `externalDeviceConnected` | Whether the controller reports a device connected to its EXT accessory port |
 | `headphonesConnected` | Whether the controller reports headphones connected to its 3.5 mm jack |
 | `microphoneConnected` | Whether the controller reports a microphone connected to its 3.5 mm jack |
 | `axes` | Normalized sticks and triggers plus raw motion sensor values |
 | `buttons` | Face, shoulder, D-pad, stick, PS, and touchpad buttons |
 | `touchpad.touches` | Current touch contacts and their coordinates |
+| `touchpad.frames` | All touch frames from the most recent full input report, in reported order |
+| `touchpad.frameCounter` | Raw counter of that report's last touch frame, 0-255, or `null` when no frames are available |
 | `sensorTimestamp` | Raw controller sensor timestamp, 0-65535, or `null` before a full input report |
 | `reportCounter` | Raw input report counter, 0-63, or `null` before the first input report |
 | `timestamp` | Browser event timestamp of the most recent input report, in milliseconds |
 
-`cableConnected`, `headphonesConnected` and `microphoneConnected` are booleans
+`cableConnected`, `externalDeviceConnected`, `headphonesConnected` and
+`microphoneConnected` are booleans
 read from full USB and Bluetooth HID input reports. All default to `false` and
 reset to `false` when the controller disconnects. Basic Bluetooth reports contain
-no cable or jack status and preserve the last values. The headphone and microphone
+no cable or accessory status and preserve the last values. The headphone and microphone
 flags describe the controller's jack detection; browser audio routing, permissions
 and capture are checked separately through `controller.audio.headphones` and
 `controller.audio.microphone`.
+
+`externalDeviceConnected` exposes the raw EXT flag from the controller's
+[input status byte](https://www.psdevwiki.com/ps4/DS4-USB#Data_Format).
+It does not identify the accessory or indicate an audio device connected to the OS.
 
 `sensorTimestamp` preserves the controller's raw 16-bit timer and wraps from
 65535 to 0; it is not converted to milliseconds. `reportCounter` preserves the
 6-bit counter and wraps from 63 to 0. Both reset to `null` on disconnect.
 Basic Bluetooth reports update `reportCounter` but preserve the last
 `sensorTimestamp`, since they contain no sensor data.
+
+Each `touchpad.frames` entry has `{ frameCounter, touches }`, including frames
+with no active contacts. USB reports contain up to three frames and Bluetooth
+reports up to four, as described in the [Linux DualShock 4 report structs](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c).
+The array is replaced by each full report; it is not accumulated gesture history.
+Counters are raw 8-bit values and wrap from 255 to 0; frames are not reordered or
+deduplicated. `touchpad.touches` remains the active contacts from the last frame,
+with an independent copy so changes to it do not modify stored frames.
+When a full report has no frames, both arrays are empty and `frameCounter` is
+`null`. Basic Bluetooth reports preserve these fields; disconnect resets them.
+
+```js
+for (const { frameCounter, touches } of controller.state.touchpad.frames) {
+  console.log(frameCounter, touches)
+}
+```
 
 The asynchronous lightbar and rumble methods can be called immediately after
 `connect()` succeeds. Until the first supported input report identifies USB or
@@ -179,6 +203,26 @@ await controller.lightbar.setColorHSL(0.22, 1, 0.5)
 
 await controller.rumble.setRumbleIntensity(64, 192)
 ```
+
+Hardware lightbar blinking runs in the controller without JavaScript timers:
+
+```js
+await controller.lightbar.setBlink(500, 250) // 500 ms bright, 250 ms dark.
+await controller.lightbar.setBlink(300) // Equal bright/dark intervals.
+console.log(controller.lightbar.blinkOn, controller.lightbar.blinkOff) // 300, 300
+await controller.lightbar.stopBlink() // Steady illumination; RGB is preserved.
+```
+
+Intervals are milliseconds, clamped to 0-2550 and rounded down to 10 ms units,
+matching the [Linux DualShock 4 blink implementation](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c).
+`NaN` and infinities are rejected without changing either interval. `stopBlink()`
+sends both intervals as zero with the blink update flag set. These methods share
+the ordered output queue with color, rumble and configured audio levels, including
+deferred writes before USB/Bluetooth detection. They reject on send failure or
+disconnect. No blink flag is sent until an explicit blink/stop request.
+`blinkOn`/`blinkOff` are read-only cached requested intervals, initially `null`;
+they do not read hardware state. Configured intervals remain in subsequent output
+reports and across reconnection until changed; changing color preserves them.
 
 Close the WebHID session when the controller is no longer needed. The method
 is safe to call more than once and does not revoke the browser's permission to

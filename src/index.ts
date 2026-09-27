@@ -7,4 +7,5 @@ export type { DualShock4MicrophoneSupport, DualShock4MicrophoneSupportReason } f
 export type { DualShock4HeadphonesSupport, DualShock4HeadphonesSupportReason, DualShock4AudioConnection } from './audio/headphoneSupport'
 export type { DualShock4EventMap, DualShock4DisconnectReason } from './events'
 export type { BatteryStatus } from './state'
+export type { DualShock4Touchpad, DualShock4TouchpadFrame, DualShock4TouchpadTouch } from './state'
 export type { DualShock4BoardModel, DualShock4FirmwareInfo } from './firmware/parseFirmwareInfo'

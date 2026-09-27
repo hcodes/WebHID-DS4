@@ -18,6 +18,7 @@ test('keeps controller state independent between instances', (t) => {
   assert.notEqual(firstController.state.buttons, secondController.state.buttons)
   assert.notEqual(firstController.state.touchpad, secondController.state.touchpad)
   assert.notEqual(firstController.state.touchpad.touches, secondController.state.touchpad.touches)
+  assert.notEqual(firstController.state.touchpad.frames, secondController.state.touchpad.frames)
 
   firstController.state.interface = DualShock4Interface.Bluetooth
   firstController.state.batteryCapacity = 95
@@ -25,11 +26,14 @@ test('keeps controller state independent between instances', (t) => {
   firstController.state.headphonesConnected = true
   firstController.state.microphoneConnected = true
   firstController.state.cableConnected = true
+  firstController.state.externalDeviceConnected = true
   firstController.state.sensorTimestamp = 0x1234
   firstController.state.reportCounter = 63
   firstController.state.axes.leftStickX = 1
   firstController.state.buttons.cross = true
   firstController.state.touchpad.touches.push({ touchId: 1, x: 100, y: 200 })
+  firstController.state.touchpad.frames.push({ frameCounter: 255, touches: [] })
+  firstController.state.touchpad.frameCounter = 255
 
   assert.equal(secondController.state.interface, DualShock4Interface.Disconnected)
   assert.equal(secondController.state.batteryCapacity, null)
@@ -37,11 +41,14 @@ test('keeps controller state independent between instances', (t) => {
   assert.equal(secondController.state.headphonesConnected, false)
   assert.equal(secondController.state.microphoneConnected, false)
   assert.equal(secondController.state.cableConnected, false)
+  assert.equal(secondController.state.externalDeviceConnected, false)
   assert.equal(secondController.state.sensorTimestamp, null)
   assert.equal(secondController.state.reportCounter, null)
   assert.equal(secondController.state.axes.leftStickX, 0)
   assert.equal(secondController.state.buttons.cross, false)
   assert.deepEqual(secondController.state.touchpad.touches, [])
+  assert.deepEqual(secondController.state.touchpad.frames, [])
+  assert.equal(secondController.state.touchpad.frameCounter, null)
 })
 
 test('parses a Bluetooth input report from its DataView byte offset', async (t) => {
@@ -306,7 +313,7 @@ for (const transport of [DualShock4Interface.USB, DualShock4Interface.Bluetooth]
     await controller.disconnect()
   })
 
-  test(`updates audio jack connections from ${transport} reports independently of battery and EXT flags`, async (t) => {
+  test(`updates accessory connection flags independently from ${transport} reports`, async (t) => {
     const device = createDevice()
     useHid(t, async () => [device])
     const controller = new DualShock4()
@@ -317,11 +324,15 @@ for (const transport of [DualShock4Interface.USB, DualShock4Interface.Bluetooth]
       ? createBluetoothReportData(8)
       : new DataView(new ArrayBuffer(79), 8, 63)
     const cases = [
-      { raw: 0x14, headphones: false, microphone: false },
-      { raw: 0x34, headphones: true, microphone: false },
-      { raw: 0x74, headphones: true, microphone: true },
-      { raw: 0x54, headphones: false, microphone: true },
-      { raw: 0x94, headphones: false, microphone: false }
+      { raw: 0x14, headphones: false, microphone: false, external: false },
+      { raw: 0x34, headphones: true, microphone: false, external: false },
+      { raw: 0x74, headphones: true, microphone: true, external: false },
+      { raw: 0x54, headphones: false, microphone: true, external: false },
+      { raw: 0x94, headphones: false, microphone: false, external: true },
+      { raw: 0xB4, headphones: true, microphone: false, external: true },
+      { raw: 0xF4, headphones: true, microphone: true, external: true },
+      { raw: 0xD4, headphones: false, microphone: true, external: true },
+      { raw: 0x14, headphones: false, microphone: false, external: false }
     ]
 
     for (const expected of cases) {
@@ -340,6 +351,8 @@ for (const transport of [DualShock4Interface.USB, DualShock4Interface.Bluetooth]
       assert.equal(controller.state.interface, transport)
       assert.equal(controller.state.headphonesConnected, expected.headphones, message)
       assert.equal(controller.state.microphoneConnected, expected.microphone, message)
+      assert.equal(controller.state.externalDeviceConnected, expected.external, message)
+      assert.equal(controller.state.cableConnected, true, message)
       assert.equal(controller.state.batteryCapacity, 45, message)
       assert.equal(controller.state.batteryStatus, 'charging', message)
     }
@@ -503,6 +516,7 @@ for (const length of [9, 77, 547]) {
     controller.state.headphonesConnected = true
     controller.state.microphoneConnected = true
     controller.state.cableConnected = true
+    controller.state.externalDeviceConnected = true
     controller.state.sensorTimestamp = 12345
     controller.state.reportCounter = 5
     controller.state.axes.gyroX = 123
@@ -520,6 +534,7 @@ for (const length of [9, 77, 547]) {
     assert.equal(controller.state.headphonesConnected, true)
     assert.equal(controller.state.microphoneConnected, true)
     assert.equal(controller.state.cableConnected, true)
+    assert.equal(controller.state.externalDeviceConnected, true)
     assert.equal(controller.state.sensorTimestamp, 12345)
     assert.equal(controller.state.reportCounter, 40)
     assert.equal(controller.state.axes.gyroX, 123)
