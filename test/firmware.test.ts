@@ -6,6 +6,69 @@ import { deferred } from './helpers/deferred'
 import { useHid, createDevice } from './helpers/hid'
 import { createFirmwareReport } from './helpers/reports'
 
+const bluetoothCollection: HIDCollectionInfo = {
+  usagePage: 1,
+  usage: 5,
+  type: 1,
+  inputReports: [{ reportId: 0x01, items: [] }, { reportId: 0x11, items: [] }],
+  outputReports: [{ reportId: 0x11, items: [] }],
+  featureReports: [{ reportId: 0xA3, items: [] }],
+  children: []
+}
+
+for (const nested of [false, true]) {
+  test(`Bluetooth clone status stays unknown before input arrives (${nested ? 'nested' : 'top-level'} collection)`, async (t) => {
+    const reportIds: number[] = []
+    const device = createDevice({
+      collections: [nested ? {
+        usagePage: 1, usage: 5, type: 1, children: [bluetoothCollection]
+      } : bluetoothCollection],
+      async receiveFeatureReport (reportId) {
+        reportIds.push(reportId)
+        if (reportId === 0xA3) return createFirmwareReport({ includesReportId: true })
+        throw new DOMException('USB-only report unavailable over Bluetooth', 'NotSupportedError')
+      }
+    })
+    useHid(t, async () => [device])
+    const controller = new DualShock4()
+
+    assert.equal(await controller.connect(), true)
+    assert.equal(controller.isClone, null)
+    assert.equal(controller.firmwareInfo?.boardModel, 'JDM-050')
+    assert.deepEqual(reportIds, [0xA3])
+
+    assert.notEqual(await controller.readFirmwareInfo(), null)
+    assert.equal(controller.isClone, null)
+    assert.deepEqual(reportIds, [0xA3, 0xA3])
+  })
+}
+
+for (const outcome of ['rejection', 'malformed report', 'timeout']) {
+  test(`Bluetooth firmware ${outcome} is not evidence of a clone`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const device = createDevice({
+      collections: [bluetoothCollection],
+      async receiveFeatureReport () {
+        if (outcome === 'rejection') throw new DOMException('Read failed', 'NetworkError')
+        if (outcome === 'timeout') return new Promise<DataView>(() => {})
+        return new DataView(new ArrayBuffer(0))
+      }
+    })
+    useHid(t, async () => [device])
+    const controller = new DualShock4()
+    const connection = controller.connect()
+
+    if (outcome === 'timeout') {
+      await new Promise<void>(resolve => setImmediate(resolve))
+      t.mock.timers.tick(1000)
+    }
+
+    assert.equal(await connection, true)
+    assert.equal(controller.firmwareInfo, null)
+    assert.equal(controller.isClone, null)
+  })
+}
+
 test('connect reads and exposes a report-ID-free Sony firmware report after opening', async (t) => {
   const reportIds: number[] = []
   let openedWhenRead = false

@@ -115,17 +115,24 @@ if (await controller.connect()) {
   //   firmwareVersion: 0x0100,
   //   firmwareVersionHex: '0x0100'
   // }
-  console.log(controller.isClone) // false for a controller that supports report 0x81
+  console.log(controller.isClone) // USB: false when the check passes; Bluetooth: null
 }
 ```
 
-The same report is supported over USB and Bluetooth. Firmware and clone-check
-feature reports time out after one second, so compatible controllers that do
-not implement them cannot block `connect()`. Call
+The same firmware report is supported over USB and Bluetooth and times out after
+one second. The optional USB clone check uses a 250 ms timeout, so compatible
+controllers that do not implement these reports cannot block `connect()`. Call
 `await controller.readFirmwareInfo()` to refresh it. The method returns the
 updated object, or `null` when a third-party controller does not implement the
 report or returns malformed data. Reading firmware information therefore does
 not prevent an otherwise compatible controller from connecting.
+
+`isClone` is a USB compatibility heuristic: `false` means valid firmware metadata
+and a successful feature-report `0x81` probe; `true` means one of these checks
+failed. It is `null` before the check, after disconnect, and on Bluetooth, where
+the USB-only `0x81` probe is unavailable. A Bluetooth connection or firmware-read
+failure over Bluetooth must not be treated as evidence that the controller is
+a replica. Handle `null` as "unknown" in your UI.
 
 Hardware and firmware versions are raw 16-bit values supplied by the
 controller. The hexadecimal properties preserve the four-digit notation used

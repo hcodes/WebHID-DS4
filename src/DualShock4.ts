@@ -48,7 +48,8 @@ export class DualShock4 extends EventTarget {
   firmwareInfo: DualShock4FirmwareInfo | null = null
 
   /**
-   * Result of the feature-report clone check, or `null` before it runs.
+   * Result of the USB feature-report clone check, or `null` before it runs
+   * and on Bluetooth, where the USB-only check is unavailable.
    * This is a compatibility heuristic, not proof of authenticity.
    */
   isClone: boolean | null = null
@@ -114,9 +115,10 @@ export class DualShock4 extends EventTarget {
    * {@link isClone}.
    *
    * Both USB and Bluetooth controllers use this report. The firmware request
-   * times out after one second; the optional follow-up clone check uses a
-   * shorter timeout. Unsupported, timed out, or malformed reports return
-   * `null` so compatible third-party controllers can still be used.
+   * times out after one second; the optional follow-up USB clone check uses
+   * a 250 ms timeout. On Bluetooth, {@link isClone} stays `null` because the
+   * check is unavailable. Unsupported, timed out, or malformed firmware reports
+   * return `null` so compatible third-party controllers can still be used.
    */
   async readFirmwareInfo (): Promise<DualShock4FirmwareInfo | null> {
     const device = this.device

@@ -4,6 +4,10 @@ All notable changes made in this fork after the upstream `1.0.5` release are doc
 
 ## 2.2.0
 
+### Fixed
+
+- Fixed genuine Bluetooth controllers being reported as clones: skip the USB-only `0x81` check when the HID descriptor identifies Bluetooth and return `isClone: null` (unknown), including when firmware metadata is unavailable.
+
 ### Added
 
 - Added hardware lightbar blinking over USB/Bluetooth via `lightbar.setBlink(onMs, offMs)` and `stopBlink()`, with cached `blinkOn`/`blinkOff` getters and millisecond durations quantized to 10 ms in the shared output queue.
