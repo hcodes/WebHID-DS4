@@ -1,4 +1,5 @@
 import { abortable } from '../utils/abortable'
+import { normalizeHardwareVolume } from './normalizeHardwareVolume'
 import {
   audioApiProblem, audioErrorReason, connectionInfo, isConcreteOutput, isControllerOutput,
   type AudioControllerState, type DualShock4HeadphonesSupport, type DualShock4HeadphonesSupportReason, type RoutedAudioContext
@@ -19,9 +20,59 @@ export class DualShock4Headphones extends EventTarget {
   private playback = new AbortController()
   private mediaDevices?: MediaDevices
   private deviceChangeVersion = 0
+  private leftVolume: number | null = null
+  private rightVolume: number | null = null
+  private volumeRequests = new AbortController()
 
   /** @internal */
-  constructor (private readonly getController: () => AudioControllerState) { super() }
+  constructor (
+    private readonly getController: () => AudioControllerState,
+    private readonly requestVolumeUpdate?: () => Promise<void>
+  ) { super() }
+
+  /** Last requested left-channel HID volume (0-255), or null before configuration/after reset.
+   * This is a local cache, not a hardware readback or acknowledgement.
+   */
+  get volumeLeft (): number | null { return this.leftVolume }
+
+  set volumeLeft (value: number) {
+    void this.setChannelVolume('left', value).catch(error => console.error(error))
+  }
+
+  /** Last requested right-channel HID volume (0-255), or null before configuration/after reset. */
+  get volumeRight (): number | null { return this.rightVolume }
+
+  set volumeRight (value: number) {
+    void this.setChannelVolume('right', value).catch(error => console.error(error))
+  }
+
+  /** Set raw headphone HID volume bytes, independently of browser routing/playback.
+   * Right defaults to left. Finite values are clamped to 0-255 and rounded.
+   * Resolves when the HID report is sent; rejects on output failure or reset.
+   */
+  async setVolume (left: number, right = left): Promise<void> {
+    const volumeLeft = normalizeHardwareVolume(left)
+    const volumeRight = normalizeHardwareVolume(right)
+    const update = this.requireVolumeControl()
+    this.leftVolume = volumeLeft
+    this.rightVolume = volumeRight
+    const signal = this.volumeRequests.signal
+    return abortable(update(), signal)
+  }
+
+  private async setChannelVolume (channel: 'left' | 'right', value: number): Promise<void> {
+    const volume = normalizeHardwareVolume(value)
+    const update = this.requireVolumeControl()
+    if (channel === 'left') this.leftVolume = volume
+    else this.rightVolume = volume
+    const signal = this.volumeRequests.signal
+    return abortable(update(), signal)
+  }
+
+  private requireVolumeControl (): () => Promise<void> {
+    if (!this.requestVolumeUpdate) throw new DOMException('Hardware volume control requires a controller output callback.', 'NotSupportedError')
+    return this.requestVolumeUpdate
+  }
 
   /** Explicitly selected output, or null before successful routing/after invalidation. */
   get outputDeviceId (): string | null { return this.selectedId }
@@ -168,8 +219,12 @@ export class DualShock4Headphones extends EventTarget {
     }
   }
 
-  /** Release playback, routing, permissions-in-flight and device listeners. A new selection is required. */
+  /** Release playback, routing, pending volume promises and device listeners. A new selection is required. */
   reset (): void {
+    this.volumeRequests.abort(new DOMException('Audio volume update cancelled by reset.', 'AbortError'))
+    this.volumeRequests = new AbortController()
+    this.leftVolume = null
+    this.rightVolume = null
     this.clearRoute()
     this.failure = undefined
     this.deviceChangeVersion++

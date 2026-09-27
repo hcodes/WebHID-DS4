@@ -12,6 +12,13 @@ export interface DualShock4State {
   /** Current battery state. */
   batteryStatus : BatteryStatus
 
+  /** Whether the controller reports a cable connected, independently of the HID transport. */
+  cableConnected : boolean
+  /** Whether the controller reports headphones connected to its 3.5 mm jack. */
+  headphonesConnected : boolean
+  /** Whether the controller reports a microphone connected to its 3.5 mm jack. */
+  microphoneConnected : boolean
+
   /** Analog positions */
   axes : DualShock4AnalogState
   /** Buttons pressed */
@@ -19,7 +26,11 @@ export interface DualShock4State {
   /** Touchpad */
   touchpad : DualShock4Touchpad
 
-  /** Timestamp of the last report */
+  /** Raw 16-bit sensor timestamp (0-65535), or `null` before a full input report. Wraps at 65536. */
+  sensorTimestamp : number | null
+  /** Raw 6-bit input report counter (0-63), or `null` before the first input report. Wraps at 64. */
+  reportCounter : number | null
+  /** Browser event timestamp of the last report, in milliseconds. */
   timestamp : number
 }
 
@@ -157,6 +168,9 @@ export function createDefaultState () : DualShock4State {
     interface: DualShock4Interface.Disconnected,
     batteryCapacity: null,
     batteryStatus: 'unknown',
+    cableConnected: false,
+    headphonesConnected: false,
+    microphoneConnected: false,
 
     axes: {
       leftStickX: 0,
@@ -205,6 +219,8 @@ export function createDefaultState () : DualShock4State {
       touches: []
     },
 
+    sensorTimestamp: null,
+    reportCounter: null,
     timestamp: -1
   }
 }

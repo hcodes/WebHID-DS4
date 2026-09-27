@@ -1,5 +1,6 @@
 export { DualShock4 } from './DualShock4'
 export { DualShock4Audio } from './audio/DualShock4Audio'
+export { DualShock4Speaker } from './audio/DualShock4Speaker'
 export { DualShock4Headphones } from './audio/DualShock4Headphones'
 export { DualShock4Microphone } from './audio/DualShock4Microphone'
 export type { DualShock4MicrophoneSupport, DualShock4MicrophoneSupportReason } from './audio/microphoneSupport'

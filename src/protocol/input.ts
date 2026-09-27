@@ -72,9 +72,11 @@ export function getInputStateData (reportId: number, data: DataView, transport: 
 export function updateControllerState (state: DualShock4State, data: DataView) {
   updateAxes(state, data)
   updateButtons(state, data)
+  state.reportCounter = data.getUint8(6) >> 2
   // Basic Bluetooth input contains buttons/sticks/triggers, but no sensors.
   if (data.byteLength === minimalBluetoothInputReportLength) return
   updateBattery(state, data)
+  updateAudioConnections(state, data)
   updateMotion(state, data)
   updateTouchpad(state, data)
 }
@@ -123,7 +125,8 @@ function updateBattery (state: DualShock4State, data: DataView) {
   // Update battery level
   const batteryData = data.getUint8(29)
   const batteryCapacity = batteryData & 0x0F
-  const cableConnected = !!(batteryData & 0x10)
+  const cableConnected = Boolean(batteryData & 0x10)
+  state.cableConnected = cableConnected
   if (!cableConnected || batteryCapacity <= 10) {
     state.batteryCapacity = batteryCapacity < 10 ? batteryCapacity * 10 + 5 : 100
     state.batteryStatus = cableConnected ? 'charging' : 'discharging'
@@ -136,7 +139,14 @@ function updateBattery (state: DualShock4State, data: DataView) {
   }
 }
 
+function updateAudioConnections (state: DualShock4State, data: DataView) {
+  const status = data.getUint8(29)
+  state.headphonesConnected = Boolean(status & 0x20)
+  state.microphoneConnected = Boolean(status & 0x40)
+}
+
 function updateMotion (state: DualShock4State, data: DataView) {
+  state.sensorTimestamp = data.getUint16(9, true)
   // Update motion input
   state.axes.gyroX = data.getInt16(12, true)
   state.axes.gyroY = data.getInt16(14, true)

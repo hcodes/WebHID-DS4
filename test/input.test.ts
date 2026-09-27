@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { DualShock4 } from '../src'
 import { DualShock4Interface } from '../src/state'
+import { crc32 } from '../src/utils/crc32'
 import { useHid, createDevice, loseDevice } from './helpers/hid'
 import { emitUsbReport, createBluetoothReportData, setTouchPoint } from './helpers/reports'
 
@@ -21,6 +22,11 @@ test('keeps controller state independent between instances', (t) => {
   firstController.state.interface = DualShock4Interface.Bluetooth
   firstController.state.batteryCapacity = 95
   firstController.state.batteryStatus = 'discharging'
+  firstController.state.headphonesConnected = true
+  firstController.state.microphoneConnected = true
+  firstController.state.cableConnected = true
+  firstController.state.sensorTimestamp = 0x1234
+  firstController.state.reportCounter = 63
   firstController.state.axes.leftStickX = 1
   firstController.state.buttons.cross = true
   firstController.state.touchpad.touches.push({ touchId: 1, x: 100, y: 200 })
@@ -28,6 +34,11 @@ test('keeps controller state independent between instances', (t) => {
   assert.equal(secondController.state.interface, DualShock4Interface.Disconnected)
   assert.equal(secondController.state.batteryCapacity, null)
   assert.equal(secondController.state.batteryStatus, 'unknown')
+  assert.equal(secondController.state.headphonesConnected, false)
+  assert.equal(secondController.state.microphoneConnected, false)
+  assert.equal(secondController.state.cableConnected, false)
+  assert.equal(secondController.state.sensorTimestamp, null)
+  assert.equal(secondController.state.reportCounter, null)
   assert.equal(secondController.state.axes.leftStickX, 0)
   assert.equal(secondController.state.buttons.cross, false)
   assert.deepEqual(secondController.state.touchpad.touches, [])
@@ -252,6 +263,91 @@ test('maps DualShock 4 battery data to capacity and status', async (t) => {
   }
 })
 
+for (const transport of [DualShock4Interface.USB, DualShock4Interface.Bluetooth]) {
+  test(`reads cable status and raw input counters from ${transport} reports, including wraparound`, async (t) => {
+    const device = createDevice()
+    useHid(t, async () => [device])
+    const controller = new DualShock4()
+    await controller.connect()
+
+    const bluetooth = transport === DualShock4Interface.Bluetooth
+    const offset = bluetooth ? 2 : 0
+    const data = bluetooth
+      ? createBluetoothReportData(8)
+      : new DataView(new ArrayBuffer(79), 8, 63)
+    const cases = [
+      { sensorTimestamp: 0xFFFF, counterByte: 0xFF, reportCounter: 63, status: 0x10, cableConnected: true, batteryStatus: 'charging' },
+      { sensorTimestamp: 0, counterByte: 0x03, reportCounter: 0, status: 0, cableConnected: false, batteryStatus: 'discharging' },
+      { sensorTimestamp: 0x1234, counterByte: 0x04, reportCounter: 1, status: 0x1B, cableConnected: true, batteryStatus: 'full' },
+      { sensorTimestamp: 0x8001, counterByte: 0x82, reportCounter: 32, status: 0x60, cableConnected: false, batteryStatus: 'discharging' }
+    ]
+
+    for (const expected of cases) {
+      data.setUint8(offset + 6, expected.counterByte)
+      data.setUint16(offset + 9, expected.sensorTimestamp, true)
+      data.setUint8(offset + 29, expected.status)
+      if (bluetooth) {
+        const checksumData = new Uint8Array(75)
+        checksumData.set([0xA1, 0x11])
+        checksumData.set(new Uint8Array(data.buffer, data.byteOffset, 73), 2)
+        data.setUint32(73, crc32(checksumData), true)
+      }
+      device.oninputreport?.call(device, {
+        device, reportId: bluetooth ? 0x11 : 0x01, data, timeStamp: 42
+      } as HIDInputReportEvent)
+
+      assert.equal(controller.state.cableConnected, expected.cableConnected)
+      assert.equal(controller.state.sensorTimestamp, expected.sensorTimestamp)
+      assert.equal(controller.state.reportCounter, expected.reportCounter)
+      assert.equal(controller.state.batteryStatus, expected.batteryStatus)
+      assert.equal(controller.state.timestamp, 42)
+    }
+
+    await controller.disconnect()
+  })
+
+  test(`updates audio jack connections from ${transport} reports independently of battery and EXT flags`, async (t) => {
+    const device = createDevice()
+    useHid(t, async () => [device])
+    const controller = new DualShock4()
+    await controller.connect()
+
+    const bluetooth = transport === DualShock4Interface.Bluetooth
+    const data = bluetooth
+      ? createBluetoothReportData(8)
+      : new DataView(new ArrayBuffer(79), 8, 63)
+    const cases = [
+      { raw: 0x14, headphones: false, microphone: false },
+      { raw: 0x34, headphones: true, microphone: false },
+      { raw: 0x74, headphones: true, microphone: true },
+      { raw: 0x54, headphones: false, microphone: true },
+      { raw: 0x94, headphones: false, microphone: false }
+    ]
+
+    for (const expected of cases) {
+      data.setUint8(bluetooth ? 31 : 29, expected.raw)
+      if (bluetooth) {
+        const checksumData = new Uint8Array(75)
+        checksumData.set([0xA1, 0x11])
+        checksumData.set(new Uint8Array(data.buffer, data.byteOffset, 73), 2)
+        data.setUint32(73, crc32(checksumData), true)
+      }
+      device.oninputreport?.call(device, {
+        device, reportId: bluetooth ? 0x11 : 0x01, data, timeStamp: 1
+      } as HIDInputReportEvent)
+
+      const message = `raw status 0x${expected.raw.toString(16)}`
+      assert.equal(controller.state.interface, transport)
+      assert.equal(controller.state.headphonesConnected, expected.headphones, message)
+      assert.equal(controller.state.microphoneConnected, expected.microphone, message)
+      assert.equal(controller.state.batteryCapacity, 45, message)
+      assert.equal(controller.state.batteryStatus, 'charging', message)
+    }
+
+    await controller.disconnect()
+  })
+}
+
 test('reads motion sensors as signed little-endian values from the DualShock 4 report', async (t) => {
   const device = createDevice()
   useHid(t, async () => [device])
@@ -404,9 +500,14 @@ for (const length of [9, 77, 547]) {
     const controller = new DualShock4()
     await controller.connect()
     controller.state.batteryCapacity = 55
+    controller.state.headphonesConnected = true
+    controller.state.microphoneConnected = true
+    controller.state.cableConnected = true
+    controller.state.sensorTimestamp = 12345
+    controller.state.reportCounter = 5
     controller.state.axes.gyroX = 123
     const buffer = new Uint8Array(length + 16)
-    buffer.set([255, 128, 128, 128, 0x28, 0, 0, 255, 0], 8)
+    buffer.set([255, 128, 128, 128, 0x28, 0, 0xA3, 255, 0], 8)
     device.oninputreport?.call(device, {
       device, reportId: 1, data: new DataView(buffer.buffer, 8, length), timeStamp: 42
     } as HIDInputReportEvent)
@@ -416,6 +517,11 @@ for (const length of [9, 77, 547]) {
     assert.equal(controller.state.axes.l2, 1)
     assert.equal(controller.state.timestamp, 42)
     assert.equal(controller.state.batteryCapacity, 55)
+    assert.equal(controller.state.headphonesConnected, true)
+    assert.equal(controller.state.microphoneConnected, true)
+    assert.equal(controller.state.cableConnected, true)
+    assert.equal(controller.state.sensorTimestamp, 12345)
+    assert.equal(controller.state.reportCounter, 40)
     assert.equal(controller.state.axes.gyroX, 123)
     buffer[12] = 8
     device.oninputreport?.call(device, {

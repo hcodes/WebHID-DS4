@@ -61,15 +61,23 @@ export class DualShock4 extends EventTarget {
   /** Allows rumble control */
   rumble = new DualShock4Rumble(() => this.requestOutputUpdate())
 
-  /** Optional browser headphone playback and headset microphone capture with explicit device selection. */
-  readonly audio = new DualShock4Audio(() => ({
+  /** Hardware audio levels and optional browser headphone playback/microphone capture. */
+  readonly audio: DualShock4Audio = new DualShock4Audio(() => ({
     device: this.device,
     transport: this.state.interface,
     disconnecting: this.connection.isDisconnecting
-  }))
+  }), () => this.requestOutputUpdate())
 
   private readonly output = new OutputController(
-    () => ({ transport: this.state.interface, rumble: this.rumble, lightbar: this.lightbar }),
+    () => ({
+      transport: this.state.interface, rumble: this.rumble, lightbar: this.lightbar,
+      audio: {
+        headphonesLeft: this.audio.headphones.volumeLeft,
+        headphonesRight: this.audio.headphones.volumeRight,
+        speaker: this.audio.speaker.volume,
+        microphone: this.audio.microphone.volume
+      }
+    }),
     raw => { this.lastSentReport = raw }
   )
 
@@ -216,7 +224,7 @@ export class DualShock4 extends EventTarget {
   }
 
   /**
-   * Sends the local rumble and lightbar state to the controller.
+   * Sends the local rumble, lightbar and configured hardware volumes to the controller.
    *
    * This function is called automatically in most cases. Output requested before
    * the first supported input report is combined and sent once the interface is known.

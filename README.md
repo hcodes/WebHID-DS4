@@ -32,6 +32,7 @@ control, and rumble over USB and Bluetooth.
 - Light and heavy rumble motors
 - Optional headphone audio: support detection, explicit audio output selection, and live MediaStream playback
 - Optional headset microphone: explicit input selection, live MediaStream capture, and automatic track cleanup
+- Hardware volume control for the mono speaker, independent left/right headphone channels and headset microphone gain over HID
 - Bundled TypeScript declarations
 
 ## Installation
@@ -140,10 +141,29 @@ input report. Its main properties are:
 | `interface` | `none`, `usb`, or `bt`; detected after the first supported input report |
 | `batteryCapacity` | Estimated capacity from 0 to 100, or `null` when unavailable |
 | `batteryStatus` | `discharging`, `charging`, `full`, `error`, or `unknown` |
+| `cableConnected` | Whether the controller reports a cable connected, independently of USB/Bluetooth transport |
+| `headphonesConnected` | Whether the controller reports headphones connected to its 3.5 mm jack |
+| `microphoneConnected` | Whether the controller reports a microphone connected to its 3.5 mm jack |
 | `axes` | Normalized sticks and triggers plus raw motion sensor values |
 | `buttons` | Face, shoulder, D-pad, stick, PS, and touchpad buttons |
 | `touchpad.touches` | Current touch contacts and their coordinates |
-| `timestamp` | Timestamp of the most recent input report |
+| `sensorTimestamp` | Raw controller sensor timestamp, 0-65535, or `null` before a full input report |
+| `reportCounter` | Raw input report counter, 0-63, or `null` before the first input report |
+| `timestamp` | Browser event timestamp of the most recent input report, in milliseconds |
+
+`cableConnected`, `headphonesConnected` and `microphoneConnected` are booleans
+read from full USB and Bluetooth HID input reports. All default to `false` and
+reset to `false` when the controller disconnects. Basic Bluetooth reports contain
+no cable or jack status and preserve the last values. The headphone and microphone
+flags describe the controller's jack detection; browser audio routing, permissions
+and capture are checked separately through `controller.audio.headphones` and
+`controller.audio.microphone`.
+
+`sensorTimestamp` preserves the controller's raw 16-bit timer and wraps from
+65535 to 0; it is not converted to milliseconds. `reportCounter` preserves the
+6-bit counter and wraps from 63 to 0. Both reset to `null` on disconnect.
+Basic Bluetooth reports update `reportCounter` but preserve the last
+`sensorTimestamp`, since they contain no sensor data.
 
 The asynchronous lightbar and rumble methods can be called immediately after
 `connect()` succeeds. Until the first supported input report identifies USB or
@@ -210,13 +230,73 @@ subscriptions. Reconnection remains explicit via `connect()`; native WebHID
 `connect` events do not automatically open a controller session.
 
 
+## Hardware audio volume
+
+`controller.audio.speaker` controls the built-in mono speaker's hardware volume.
+`controller.audio.headphones` controls the left and right headphone volume bytes,
+as well as the browser playback API described below. Volume control uses WebHID
+and requires no browser audio output selection or microphone permission.
+`controller.audio.microphone.volume` controls the headset microphone's hardware
+input gain, independently of browser capture.
+
+```js
+await controller.connect()
+
+await controller.audio.speaker.setVolume(60)
+await controller.audio.headphones.setVolume(67) // Same value for both channels.
+await controller.audio.headphones.setVolume(50, 70) // Independent left/right levels.
+await controller.audio.microphone.setVolume(64) // Headset microphone hardware gain.
+
+console.log(controller.audio.speaker.volume) // 60
+console.log(controller.audio.headphones.volumeLeft) // 50
+console.log(controller.audio.headphones.volumeRight) // 70
+console.log(controller.audio.microphone.volume) // 64
+
+// Property setters send updates asynchronously, like lightbar/rumble setters.
+controller.audio.speaker.volume = 40
+controller.audio.headphones.volumeLeft = 55
+controller.audio.headphones.volumeRight = 65
+controller.audio.microphone.volume = 32
+```
+
+Values are raw HID bytes from 0 to 255, not percentages or a calibrated loudness
+scale. Finite values are clamped to this range and rounded to the nearest integer;
+`NaN` and infinities are rejected. Prefer `await setVolume(...)` to handle output
+failures; property setters report asynchronous failures through `console.error`.
+Updates requested after `connect()` but before transport detection are combined
+with pending rumble/lightbar updates and sent once USB or Bluetooth is identified.
+
+**Volume getters return the last values requested by this library.** The
+documented HID reports do not provide a confirmed volume readback. Getters return
+`null` before configuration and after endpoint reset or controller disconnect.
+They do not detect changes made by the OS or another application and remain at
+the requested values if sending fails. An unset channel is omitted from the HID
+update flags, so configuring one channel does not mute another. Resetting the
+cache does not mute hardware or restore its previous volume.
+Reset or a new controller session rejects pending volume requests with
+`AbortError`; unrelated pending rumble/lightbar updates are preserved.
+Stopping microphone capture preserves its configured hardware gain; resetting
+the microphone clears the gain cache as well as capture resources.
+
+These controls are optional. Leave them unset when system audio settings provide
+the desired controls. Once configured, cached levels are included in subsequent
+HID output reports and may overwrite changes made by the OS or another app.
+
+Volume bytes and individual channel flags follow the [DS4 Bluetooth report
+layout](https://www.psdevwiki.com/ps4/DS4-BT#HID_OUTPUT_reports) and the
+[DS4Windows volume flag mapping](https://gist.github.com/Ryochan7/d18a5c2413bfbc41c6efb620786ef363).
+Audio routing flags are not changed; microphone gain is updated only when
+explicitly configured. A successful HID send
+does not confirm audible playback or hardware acceptance. Built-in speaker audio
+streaming is not implemented, and volume writes do not enable an OS audio device
+over ordinary Bluetooth. The headphone playback requirements below still apply.
+
 ## Headphone audio
 
 `controller.audio.headphones` controls stereo playback through the controller's
 3.5 mm headphone jack. The `DualShock4Headphones` class is a separate endpoint
-inside `DualShock4Audio`; the built-in mono speaker is **not implemented** and
-can later have its own `controller.audio.speaker` API without changing headphone
-names or behavior.
+inside `DualShock4Audio`; `controller.audio.speaker` exposes mono-speaker volume,
+while built-in speaker audio streaming is not implemented.
 
 Headphone audio uses an OS audio output through Web Audio, independently of HID
 rumble/lightbar reports. It plays audio supplied by this page; it does not capture

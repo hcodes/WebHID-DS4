@@ -57,10 +57,15 @@ test('disconnect closes the HID session and clears controller state', async (t) 
 
   const controller = new DualShock4()
   await controller.connect()
-  emitUsbReport(device, 0x05)
+  emitUsbReport(device, 0x75)
 
   assert.equal(controller.state.interface, DualShock4Interface.USB)
   assert.notEqual(controller.lastReport, undefined)
+  assert.equal(controller.state.headphonesConnected, true)
+  assert.equal(controller.state.microphoneConnected, true)
+  assert.equal(controller.state.cableConnected, true)
+  assert.equal(controller.state.sensorTimestamp, 0)
+  assert.equal(controller.state.reportCounter, 0)
 
   await controller.disconnect()
 
@@ -73,6 +78,11 @@ test('disconnect closes the HID session and clears controller state', async (t) 
   assert.equal(controller.state.interface, DualShock4Interface.Disconnected)
   assert.equal(controller.state.batteryCapacity, null)
   assert.equal(controller.state.batteryStatus, 'unknown')
+  assert.equal(controller.state.headphonesConnected, false)
+  assert.equal(controller.state.microphoneConnected, false)
+  assert.equal(controller.state.cableConnected, false)
+  assert.equal(controller.state.sensorTimestamp, null)
+  assert.equal(controller.state.reportCounter, null)
 })
 
 test('shares one disconnection between concurrent disconnect calls', async (t) => {

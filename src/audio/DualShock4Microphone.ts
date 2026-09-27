@@ -1,11 +1,12 @@
 import { abortable } from '../utils/abortable'
+import { normalizeHardwareVolume } from './normalizeHardwareVolume'
 import { connectionInfo, type AudioControllerState } from './headphoneSupport'
 import {
   isConcreteInput, isControllerInput, microphoneApiProblem, microphoneErrorReason,
   type DualShock4MicrophoneSupport, type DualShock4MicrophoneSupportReason
 } from './microphoneSupport'
 
-/** Capture the headset microphone through an explicitly selected OS audio input.
+/** Control headset microphone hardware gain and capture an explicitly selected OS audio input.
  * The endpoint owns its capture tracks and stops them on stop/reset/controller disconnection.
  * Listen for `change`, then read {@link stream} and call {@link checkSupport} again.
  */
@@ -17,9 +18,35 @@ export class DualShock4Microphone extends EventTarget {
   private operation = new AbortController()
   private mediaDevices?: MediaDevices
   private deviceChangeVersion = 0
+  private requestedVolume: number | null = null
+  private volumeRequests = new AbortController()
 
   /** @internal */
-  constructor (private readonly getController: () => AudioControllerState) { super() }
+  constructor (
+    private readonly getController: () => AudioControllerState,
+    private readonly requestVolumeUpdate?: () => Promise<void>
+  ) { super() }
+
+  /** Last requested microphone HID gain byte (0-255), or null before configuration/after reset.
+   * This is a local cache, not hardware readback or browser capture volume.
+   */
+  get volume (): number | null { return this.requestedVolume }
+
+  set volume (value: number) {
+    void this.setVolume(value).catch(error => console.error(error))
+  }
+
+  /** Set raw headset microphone gain independently of browser capture/permissions.
+   * Finite values are clamped to 0-255 and rounded.
+   * Resolves when the HID report is sent; rejects on output failure or reset.
+   */
+  async setVolume (value: number): Promise<void> {
+    const volume = normalizeHardwareVolume(value)
+    if (!this.requestVolumeUpdate) throw new DOMException('Hardware volume control requires a controller output callback.', 'NotSupportedError')
+    this.requestedVolume = volume
+    const signal = this.volumeRequests.signal
+    return abortable(this.requestVolumeUpdate(), signal)
+  }
 
   /** Explicitly selected concrete input, or null before selection/after invalidation. */
   get inputDeviceId (): string | null { return this.selectedId }
@@ -163,8 +190,11 @@ export class DualShock4Microphone extends EventTarget {
     this.changed()
   }
 
-  /** Stop capture, clear the input, cancel pending work and release device listeners. */
+  /** Stop capture, clear input/gain cache, cancel pending work and release device listeners. */
   reset (): void {
+    this.volumeRequests.abort(new DOMException('Audio volume update cancelled by reset.', 'AbortError'))
+    this.volumeRequests = new AbortController()
+    this.requestedVolume = null
     this.cancelCapture()
     this.selectedId = null
     this.failure = undefined
